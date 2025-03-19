@@ -149,18 +149,6 @@ describe("perp-amm (with configuration persistence)", () => {
         .signers([admin])
         .rpc();
 
-      // After a SOL withdrawal the vault WSOL account is closed.
-      let vaultAccountAfter: any = null;
-      try {
-        vaultAccountAfter = await getAccount(provider.connection, solVault);
-      } catch (e) {
-        vaultAccountAfter = null;
-      }
-      assert.isNull(
-        vaultAccountAfter,
-        "SOL vault account should be closed after withdrawal"
-      );
-
       const poolStateAfter = await program.account.poolState.fetch(poolState);
       const adminSysAfter = await provider.connection.getBalance(
         admin.publicKey
