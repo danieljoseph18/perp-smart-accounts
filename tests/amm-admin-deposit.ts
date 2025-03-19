@@ -21,7 +21,7 @@ import BN from "bn.js";
 import * as dotenv from "dotenv";
 import { PerpMarginAccounts } from "../target/types/perp_margin_accounts";
 import { initializeMarginProgram } from "./helpers/init-margin-program";
-import { ChainlinkMock } from "../target/types/chainlink_mock";
+
 dotenv.config();
 
 describe("perp-amm (with configuration persistence)", () => {
@@ -36,8 +36,14 @@ describe("perp-amm (with configuration persistence)", () => {
     .PerpMarginAccounts as Program<PerpMarginAccounts>;
 
   // Get the deployed chainlink_mock program
-  const chainlinkMockProgram = anchor.workspace
-    .ChainlinkMock as Program<ChainlinkMock>;
+  const chainlinkProgram = new PublicKey(
+    "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny"
+  );
+
+  // Devnet SOL/USD Price Feed
+  const chainlinkFeed = new PublicKey(
+    "99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR"
+  );
 
   // Use a fixed keypair for admin
   const admin = Keypair.fromSeed(Uint8Array.from(Array(32).fill(1)));
@@ -61,9 +67,6 @@ describe("perp-amm (with configuration persistence)", () => {
   let adminSolAccount: PublicKey;
   let user1UsdcAccount: PublicKey;
   let user2UsdcAccount: PublicKey;
-
-  let mockChainlinkFeed: PublicKey;
-  let mockChainlinkFeedKeypair: Keypair;
 
   // Flag to indicate if this is the first run
   let isFirstRun = false;
@@ -92,7 +95,6 @@ describe("perp-amm (with configuration persistence)", () => {
       const poolStateAccount = await program.account.poolState.fetch(poolState);
 
       // Set all the configuration from the pool state
-      mockChainlinkFeed = poolStateAccount.chainlinkPriceFeed;
       lpTokenMint = poolStateAccount.lpTokenMint;
       solMint = new PublicKey("So11111111111111111111111111111111111111112"); // Wrapped SOL is always this address
 
@@ -113,7 +115,7 @@ describe("perp-amm (with configuration persistence)", () => {
       usdcMint = usdcVaultInfo.mint;
 
       console.log("Using existing configuration:");
-      console.log("- Chainlink feed:", mockChainlinkFeed.toString());
+      console.log("- Chainlink feed:", chainlinkFeed.toString());
       console.log("- LP Token mint:", lpTokenMint.toString());
       console.log("- SOL vault:", solVault.address.toString());
       console.log("- USDC vault:", usdcVault.address.toString());
@@ -126,30 +128,6 @@ describe("perp-amm (with configuration persistence)", () => {
         "No existing pool state found, will create new configuration"
       );
       isFirstRun = true;
-
-      // Create Chainlink feed if it doesn't exist
-      mockChainlinkFeedKeypair = Keypair.generate();
-      mockChainlinkFeed = mockChainlinkFeedKeypair.publicKey;
-
-      // Fund the feed account so it exists on chain
-      const mockFeedTx = await provider.connection.requestAirdrop(
-        mockChainlinkFeed,
-        LAMPORTS_PER_SOL / 100
-      );
-      await provider.connection.confirmTransaction(mockFeedTx);
-
-      // Initialize the mock Chainlink feed with an initial price
-      await chainlinkMockProgram.methods
-        .initialize(new BN(100_000_000)) // $100.00
-        .accountsStrict({
-          feed: mockChainlinkFeed,
-          owner: admin.publicKey,
-          systemProgram: SystemProgram.programId,
-        })
-        .signers([admin, mockChainlinkFeedKeypair])
-        .rpc();
-
-      console.log("Created new Chainlink feed:", mockChainlinkFeed.toString());
 
       // Set up all accounts and configurations
       await setupInitialConfiguration();
@@ -421,8 +399,8 @@ describe("perp-amm (with configuration persistence)", () => {
       marginProgram,
       solVault.address,
       usdcVault.address,
-      chainlinkMockProgram.programId,
-      mockChainlinkFeed
+      chainlinkProgram,
+      chainlinkFeed
     );
 
     // Create a keypair for the LP token mint
@@ -441,8 +419,6 @@ describe("perp-amm (with configuration persistence)", () => {
         usdcRewardVault: usdcVault.address, // Using same vault for simplicity
         lpTokenMint,
         tokenProgram: TOKEN_PROGRAM_ID,
-        chainlinkProgramId: chainlinkMockProgram.programId,
-        chainlinkPriceFeed: mockChainlinkFeed,
         systemProgram: SystemProgram.programId,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY,
       })
@@ -490,8 +466,8 @@ describe("perp-amm (with configuration persistence)", () => {
           poolState,
           adminTokenAccount: adminSolAccount,
           vaultAccount: poolStateAccount.solVault,
-          chainlinkProgram: chainlinkMockProgram.programId,
-          chainlinkFeed: mockChainlinkFeed,
+          chainlinkProgram: chainlinkProgram,
+          chainlinkFeed: chainlinkFeed,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
@@ -566,8 +542,8 @@ describe("perp-amm (with configuration persistence)", () => {
           poolState,
           adminTokenAccount: adminUsdcAccount,
           vaultAccount: poolStateAccount.usdcVault,
-          chainlinkProgram: chainlinkMockProgram.programId,
-          chainlinkFeed: mockChainlinkFeed,
+          chainlinkProgram: chainlinkProgram,
+          chainlinkFeed: chainlinkFeed,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
@@ -640,8 +616,8 @@ describe("perp-amm (with configuration persistence)", () => {
             poolState,
             adminTokenAccount: user1SolAccount.address,
             vaultAccount: poolStateAccount.solVault,
-            chainlinkProgram: chainlinkMockProgram.programId,
-            chainlinkFeed: mockChainlinkFeed,
+            chainlinkProgram: chainlinkProgram,
+            chainlinkFeed: chainlinkFeed,
             tokenProgram: TOKEN_PROGRAM_ID,
             systemProgram: SystemProgram.programId,
           })

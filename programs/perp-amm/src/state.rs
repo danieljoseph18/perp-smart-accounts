@@ -100,15 +100,6 @@ pub struct PoolState {
 
     /// Accumulated USDC fees from deposits/withdrawals (6 decimals)
     pub accumulated_usdc_fees: u64,
-
-    // -----------------------------------------------
-    // Chainlink configuration
-    // -----------------------------------------------
-    /// Chainlink Program ID
-    pub chainlink_program_id: Pubkey,
-
-    /// Chainlink Price Feed Address
-    pub chainlink_price_feed: Pubkey,
 }
 
 impl PoolState {
@@ -130,9 +121,7 @@ impl PoolState {
         + 16                  // cumulative_reward_per_token
         + 8                   // last_distribution_time
         + 8                   // accumulated_sol_fees
-        + 8                   // accumulated_usdc_fees
-        + 32                  // chainlink_program_id
-        + 32; // chainlink_price_feed
+        + 8; // accumulated_usdc_fees
 }
 
 /// UserState stores user-specific info (in practice often combined into a single PDA).

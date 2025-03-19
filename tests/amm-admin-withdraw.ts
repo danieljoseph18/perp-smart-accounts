@@ -22,7 +22,6 @@ import * as dotenv from "dotenv";
 import { PerpMarginAccounts } from "../target/types/perp_margin_accounts";
 import { initializeMarginProgram } from "./helpers/init-margin-program";
 import { setupAmmProgram } from "./helpers/init-amm-program";
-import { ChainlinkMock } from "../target/types/chainlink_mock";
 dotenv.config();
 
 describe("perp-amm (with configuration persistence)", () => {

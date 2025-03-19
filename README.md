@@ -11,6 +11,24 @@ A Solana program for managing a liquidity pool with staking and rewards function
 
 - USDC price is assumed to be 1. This needs to be replaced with a Chainlink Oracle
 
+## Testing
+
+To test, you must first spin up localnet with a forked instance of Chainlink Solana, or the tests won't work properly.
+
+You can do this by running:
+
+```
+ solana-test-validator -r --bpf-program HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny target/deploy/chainlink.so --clone 99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR --url devnet
+```
+
+This clones the chainlink program and the sol/usd price feed from devnet onto your localnet, and will also spin up a localnet for your tests to run against.
+
+You can then run individual tests by doing:
+
+```
+yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/[insert-test-name-here].ts
+```
+
 ## Prerequisites
 
 ```bash

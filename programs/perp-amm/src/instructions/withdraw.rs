@@ -1,4 +1,7 @@
-use crate::{errors::VaultError, instructions::update_rewards::*, state::*, NATIVE_MINT};
+use crate::{
+    errors::VaultError, instructions::update_rewards::*, state::*, CHAINLINK_PROGRAM_ID,
+    DEVNET_SOL_PRICE_FEED, MAINNET_SOL_PRICE_FEED, NATIVE_MINT,
+};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount, Transfer};
 use chainlink_solana as chainlink;
@@ -34,11 +37,11 @@ pub struct Withdraw<'info> {
     pub user_token_account: Option<Account<'info, TokenAccount>>,
 
     /// CHECK: Validated in constraint
-    #[account(address = pool_state.chainlink_program_id)]
+    #[account(address = CHAINLINK_PROGRAM_ID.parse::<Pubkey>().unwrap())]
     pub chainlink_program: AccountInfo<'info>,
 
     /// CHECK: Validated in constraint
-    #[account(address = pool_state.chainlink_price_feed)]
+    #[account(address = if cfg!(feature = "devnet") { DEVNET_SOL_PRICE_FEED } else { MAINNET_SOL_PRICE_FEED }.parse::<Pubkey>().unwrap())]
     pub chainlink_feed: AccountInfo<'info>,
 
     pub token_program: Program<'info, Token>,

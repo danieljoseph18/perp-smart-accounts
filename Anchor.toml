@@ -8,7 +8,6 @@ skip-lint = false
 [programs.localnet]
 perp_amm = "brriXKXk4fveoRhSSVPdxJPjNoSEEjRyR7i5mGbFD1D"
 perp_margin_accounts = "brrFTzk9JScspG4H1sqthrQHnJoBBg9BA8v31Bn8V3R"
-chainlink_mock = "H2C4RzQ7FfKF2W8MKigHorSx3enRiVzaWWLXKDfJQjt9"
 
 [registry]
 url = "https://api.apr.dev"
@@ -16,6 +15,19 @@ url = "https://api.apr.dev"
 [provider]
 cluster = "localnet"
 wallet = "~/.config/solana/id.json"
+
+# The cluster from which I am cloning the accounts
+[test.validator]
+url = "https://api.devnet.solana.com"
+
+# The external programs I want to deploy
+[[test.genesis]]
+address = "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny"
+program = "target/deploy/chainlink.so"
+
+# Addresses that I want to clone (e.g. price feed account from chainlink or pyth)
+[[test.validator.clone]]
+address = "99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
