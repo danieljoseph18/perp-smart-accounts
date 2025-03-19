@@ -9,21 +9,27 @@ import {
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
-  createMint,
-  mintTo,
   getAccount,
   getOrCreateAssociatedTokenAccount,
-  Account,
   getMint,
 } from "@solana/spl-token";
 import { assert } from "chai";
 import BN from "bn.js";
 import * as dotenv from "dotenv";
 import { PerpMarginAccounts } from "../target/types/perp_margin_accounts";
-import { initializeMarginProgram } from "./helpers/init-margin-program";
 import { setupAmmProgram } from "./helpers/init-amm-program";
-import { ChainlinkMock } from "../target/types/chainlink_mock";
+
 dotenv.config();
+
+// Get the deployed chainlink_mock program
+const chainlinkProgram = new PublicKey(
+  "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny"
+);
+
+// Devnet SOL/USD Price Feed
+const chainlinkFeed = new PublicKey(
+  "99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR"
+);
 
 describe("perp-amm (with configuration persistence)", () => {
   // Configure the client to use the local cluster
@@ -35,10 +41,6 @@ describe("perp-amm (with configuration persistence)", () => {
   // Required for initialization
   const marginProgram = anchor.workspace
     .PerpMarginAccounts as Program<PerpMarginAccounts>;
-
-  // Get the deployed chainlink_mock program
-  const chainlinkMockProgram = anchor.workspace
-    .ChainlinkMock as Program<ChainlinkMock>;
 
   // Use a fixed keypair for admin
   const admin = Keypair.fromSeed(Uint8Array.from(Array(32).fill(1)));
@@ -61,8 +63,6 @@ describe("perp-amm (with configuration persistence)", () => {
   let user1UsdcAccount: PublicKey;
   let user2UsdcAccount: PublicKey;
 
-  let mockChainlinkFeed: PublicKey;
-
   // User LP token accounts
   let user1LpTokenAccount: PublicKey;
   let user2LpTokenAccount: PublicKey;
@@ -81,25 +81,26 @@ describe("perp-amm (with configuration persistence)", () => {
   before(async () => {
     console.log("=== Starting test setup ===");
 
-    // Set up AMM program and get needed addresses
+    // Set up the AMM program; this helper creates mints, vaults,
+    // poolState, and admin/user token accounts.
     const setup = await setupAmmProgram(
       provider,
       program,
       marginProgram,
-      chainlinkMockProgram,
+      chainlinkProgram,
+      chainlinkFeed,
       admin,
       user1,
       user2
     );
 
-    // Set all the configuration from the setup
+    // Retrieve configuration values from the setup helper.
     poolState = setup.poolState;
     solMint = setup.solMint;
     usdcMint = setup.usdcMint;
     lpTokenMint = setup.lpTokenMint;
     solVault = setup.solVault;
     usdcVault = setup.usdcVault;
-    mockChainlinkFeed = setup.mockChainlinkFeed;
     adminSolAccount = setup.adminSolAccount;
     adminUsdcAccount = setup.adminUsdcAccount;
     user1UsdcAccount = setup.user1UsdcAccount;
@@ -134,9 +135,8 @@ describe("perp-amm (with configuration persistence)", () => {
     configInitialized = true;
   });
 
-  // Use beforeEach to ensure all accounts are ready for each test
+  // Ensure configuration is initialized before each test.
   beforeEach(async () => {
-    // Ensure configuration is initialized before running tests
     if (!configInitialized) {
       throw new Error("Configuration not initialized");
     }
@@ -176,8 +176,8 @@ describe("perp-amm (with configuration persistence)", () => {
             userState: user1State,
             lpTokenMint,
             userLpTokenAccount: user1LpTokenAccount,
-            chainlinkProgram: chainlinkMockProgram.programId,
-            chainlinkFeed: mockChainlinkFeed,
+            chainlinkProgram: chainlinkProgram,
+            chainlinkFeed: chainlinkFeed,
             systemProgram: SystemProgram.programId,
             tokenProgram: TOKEN_PROGRAM_ID,
           })
@@ -195,8 +195,8 @@ describe("perp-amm (with configuration persistence)", () => {
             userState: user2State,
             lpTokenMint,
             userLpTokenAccount: user2LpTokenAccount,
-            chainlinkProgram: chainlinkMockProgram.programId,
-            chainlinkFeed: mockChainlinkFeed, 
+            chainlinkProgram: chainlinkProgram,
+            chainlinkFeed: chainlinkFeed, 
             systemProgram: SystemProgram.programId,
             tokenProgram: TOKEN_PROGRAM_ID,
           })
@@ -254,8 +254,8 @@ describe("perp-amm (with configuration persistence)", () => {
           userLpTokenAccount: user1LpTokenAccount,
           vaultAccount: solVault,
           userTokenAccount: user1SolAccount,
-          chainlinkProgram: chainlinkMockProgram.programId,
-          chainlinkFeed: mockChainlinkFeed,
+          chainlinkProgram: chainlinkProgram,
+          chainlinkFeed: chainlinkFeed,
           systemProgram: SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
         })
@@ -360,8 +360,8 @@ describe("perp-amm (with configuration persistence)", () => {
           userLpTokenAccount: user2LpTokenAccount,
           vaultAccount: usdcVault,
           userTokenAccount: user2UsdcAccount,
-          chainlinkProgram: chainlinkMockProgram.programId,
-          chainlinkFeed: mockChainlinkFeed,
+          chainlinkProgram: chainlinkProgram,
+          chainlinkFeed: chainlinkFeed,
           systemProgram: SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
         })
@@ -447,8 +447,8 @@ describe("perp-amm (with configuration persistence)", () => {
             userLpTokenAccount: user1LpTokenAccount,
             vaultAccount: solVault,
             userTokenAccount: user1SolAccount,
-            chainlinkProgram: chainlinkMockProgram.programId,
-            chainlinkFeed: mockChainlinkFeed,
+            chainlinkProgram: chainlinkProgram,
+            chainlinkFeed: chainlinkFeed,
             systemProgram: SystemProgram.programId,
             tokenProgram: TOKEN_PROGRAM_ID,
           })
@@ -491,8 +491,8 @@ describe("perp-amm (with configuration persistence)", () => {
             userLpTokenAccount: user1LpTokenAccount,
             vaultAccount: solVault,
             userTokenAccount: user1SolAccount,
-            chainlinkProgram: chainlinkMockProgram.programId,
-            chainlinkFeed: mockChainlinkFeed,
+            chainlinkProgram: chainlinkProgram,
+            chainlinkFeed: chainlinkFeed,
             systemProgram: SystemProgram.programId,
             tokenProgram: TOKEN_PROGRAM_ID,
           })

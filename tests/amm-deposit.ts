@@ -9,21 +9,27 @@ import {
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
-  createMint,
-  mintTo,
   getAccount,
   getOrCreateAssociatedTokenAccount,
-  Account,
   getMint,
 } from "@solana/spl-token";
 import { assert } from "chai";
 import BN from "bn.js";
 import * as dotenv from "dotenv";
 import { PerpMarginAccounts } from "../target/types/perp_margin_accounts";
-import { initializeMarginProgram } from "./helpers/init-margin-program";
 import { setupAmmProgram } from "./helpers/init-amm-program";
-import { ChainlinkMock } from "../target/types/chainlink_mock";
+
 dotenv.config();
+
+// Get the deployed chainlink_mock program
+const chainlinkProgram = new PublicKey(
+  "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny"
+);
+
+// Devnet SOL/USD Price Feed
+const chainlinkFeed = new PublicKey(
+  "99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR"
+);
 
 describe("perp-amm (with configuration persistence)", () => {
   // Configure the client to use the local cluster
@@ -35,10 +41,6 @@ describe("perp-amm (with configuration persistence)", () => {
   // Required for initialization
   const marginProgram = anchor.workspace
     .PerpMarginAccounts as Program<PerpMarginAccounts>;
-
-  // Get the deployed chainlink_mock program
-  const chainlinkMockProgram = anchor.workspace
-    .ChainlinkMock as Program<ChainlinkMock>;
 
   // Use a fixed keypair for admin
   const admin = Keypair.fromSeed(Uint8Array.from(Array(32).fill(1)));
@@ -61,12 +63,10 @@ describe("perp-amm (with configuration persistence)", () => {
   let user1UsdcAccount: PublicKey;
   let user2UsdcAccount: PublicKey;
 
-  let mockChainlinkFeed: PublicKey;
-
   // User LP token accounts
   let user1LpTokenAccount: PublicKey;
   let user2LpTokenAccount: PublicKey;
-  
+
   // User states
   let user1State: PublicKey;
   let user2State: PublicKey;
@@ -81,44 +81,49 @@ describe("perp-amm (with configuration persistence)", () => {
   before(async () => {
     console.log("=== Starting test setup ===");
 
-    // Set up AMM program and get needed addresses
+    // Set up the AMM program; this helper creates mints, vaults,
+    // poolState, and admin/user token accounts.
     const setup = await setupAmmProgram(
       provider,
       program,
       marginProgram,
-      chainlinkMockProgram,
+      chainlinkProgram,
+      chainlinkFeed,
       admin,
       user1,
       user2
     );
 
-    // Set all the configuration from the setup
+    // Retrieve configuration values from the setup helper.
     poolState = setup.poolState;
     solMint = setup.solMint;
     usdcMint = setup.usdcMint;
     lpTokenMint = setup.lpTokenMint;
     solVault = setup.solVault;
     usdcVault = setup.usdcVault;
-    mockChainlinkFeed = setup.mockChainlinkFeed;
     adminSolAccount = setup.adminSolAccount;
     adminUsdcAccount = setup.adminUsdcAccount;
     user1UsdcAccount = setup.user1UsdcAccount;
     user2UsdcAccount = setup.user2UsdcAccount;
 
     // Create LP token accounts for users
-    user1LpTokenAccount = (await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      admin,
-      lpTokenMint,
-      user1.publicKey
-    )).address;
+    user1LpTokenAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        admin,
+        lpTokenMint,
+        user1.publicKey
+      )
+    ).address;
 
-    user2LpTokenAccount = (await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      admin,
-      lpTokenMint,
-      user2.publicKey
-    )).address;
+    user2LpTokenAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        admin,
+        lpTokenMint,
+        user2.publicKey
+      )
+    ).address;
 
     // Derive user states
     [user1State] = PublicKey.findProgramAddressSync(
@@ -134,9 +139,8 @@ describe("perp-amm (with configuration persistence)", () => {
     configInitialized = true;
   });
 
-  // Use beforeEach to ensure all accounts are ready for each test
+  // Ensure configuration is initialized before each test.
   beforeEach(async () => {
-    // Ensure configuration is initialized before running tests
     if (!configInitialized) {
       throw new Error("Configuration not initialized");
     }
@@ -145,12 +149,14 @@ describe("perp-amm (with configuration persistence)", () => {
   describe("deposit", () => {
     it("should deposit SOL to the pool", async () => {
       // Create a SOL token account for user1
-      const user1SolAccount = (await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        admin,
-        solMint,
-        user1.publicKey
-      )).address;
+      const user1SolAccount = (
+        await getOrCreateAssociatedTokenAccount(
+          provider.connection,
+          admin,
+          solMint,
+          user1.publicKey
+        )
+      ).address;
 
       // Add some SOL to user1's account
       const wrapAmount = 3 * LAMPORTS_PER_SOL; // 3 SOL
@@ -164,10 +170,7 @@ describe("perp-amm (with configuration persistence)", () => {
       await provider.sendAndConfirm(wrapTx, [admin]);
 
       // Get balance before deposit
-      const solVaultBefore = await getAccount(
-        provider.connection,
-        solVault
-      );
+      const solVaultBefore = await getAccount(provider.connection, solVault);
       const poolStateBefore = await program.account.poolState.fetch(poolState);
       const userStateBefore = await program.account.userState.fetch(user1State);
       const lpTokenSupplyBefore = (
@@ -189,8 +192,8 @@ describe("perp-amm (with configuration persistence)", () => {
           userState: user1State,
           lpTokenMint,
           userLpTokenAccount: user1LpTokenAccount,
-          chainlinkProgram: chainlinkMockProgram.programId,
-          chainlinkFeed: mockChainlinkFeed,
+          chainlinkProgram: chainlinkProgram,
+          chainlinkFeed: chainlinkFeed,
           systemProgram: SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
         })
@@ -198,10 +201,7 @@ describe("perp-amm (with configuration persistence)", () => {
         .rpc();
 
       // Get balance after deposit
-      const solVaultAfter = await getAccount(
-        provider.connection,
-        solVault
-      );
+      const solVaultAfter = await getAccount(provider.connection, solVault);
       const poolStateAfter = await program.account.poolState.fetch(poolState);
       const userStateAfter = await program.account.userState.fetch(user1State);
       const lpTokenSupplyAfter = (
@@ -211,10 +211,9 @@ describe("perp-amm (with configuration persistence)", () => {
         provider.connection,
         user1SolAccount
       );
-      const user1LpBalance = (await getAccount(
-        provider.connection,
-        user1LpTokenAccount
-      )).amount;
+      const user1LpBalance = (
+        await getAccount(provider.connection, user1LpTokenAccount)
+      ).amount;
 
       // Calculate expected values (accounting for 0.1% fee)
       const feeAmount = initialSolDeposit.muln(1).divn(1000); // 0.1% fee
@@ -282,8 +281,8 @@ describe("perp-amm (with configuration persistence)", () => {
           userState: user2State,
           lpTokenMint,
           userLpTokenAccount: user2LpTokenAccount,
-          chainlinkProgram: chainlinkMockProgram.programId,
-          chainlinkFeed: mockChainlinkFeed, 
+          chainlinkProgram: chainlinkProgram,
+          chainlinkFeed: chainlinkFeed,
           systemProgram: SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
         })
@@ -345,12 +344,14 @@ describe("perp-amm (with configuration persistence)", () => {
 
     it("should fail to deposit SOL if amount is zero", async () => {
       // Create a SOL token account for user1 if it doesn't exist
-      const user1SolAccount = (await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        admin,
-        solMint,
-        user1.publicKey
-      )).address;
+      const user1SolAccount = (
+        await getOrCreateAssociatedTokenAccount(
+          provider.connection,
+          admin,
+          solMint,
+          user1.publicKey
+        )
+      ).address;
 
       try {
         await program.methods
@@ -363,8 +364,8 @@ describe("perp-amm (with configuration persistence)", () => {
             userState: user1State,
             lpTokenMint,
             userLpTokenAccount: user1LpTokenAccount,
-            chainlinkProgram: chainlinkMockProgram.programId,
-            chainlinkFeed: mockChainlinkFeed,
+            chainlinkProgram: chainlinkProgram,
+            chainlinkFeed: chainlinkFeed,
             systemProgram: SystemProgram.programId,
             tokenProgram: TOKEN_PROGRAM_ID,
           })
@@ -399,8 +400,8 @@ describe("perp-amm (with configuration persistence)", () => {
             userState: user2State,
             lpTokenMint,
             userLpTokenAccount: user2LpTokenAccount,
-            chainlinkProgram: chainlinkMockProgram.programId,
-            chainlinkFeed: mockChainlinkFeed,
+            chainlinkProgram: chainlinkProgram,
+            chainlinkFeed: chainlinkFeed,
             systemProgram: SystemProgram.programId,
             tokenProgram: TOKEN_PROGRAM_ID,
           })
