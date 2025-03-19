@@ -79,7 +79,11 @@ async function initializeMarginProgram(
 
   try {
     await program.methods
-      .initialize(new anchor.BN(WITHDRAWAL_TIMELOCK))
+      .initialize(
+        new anchor.BN(WITHDRAWAL_TIMELOCK),
+        CHAINLINK_PROGRAM_ID,
+        CHAINLINK_SOL_FEED
+      )
       .accountsStrict({
         authority: provider.wallet.publicKey,
         marginVault,
@@ -96,6 +100,8 @@ async function initializeMarginProgram(
       marginVault,
       solVault: solVaultAccount.address,
       usdcVault: usdcVaultAccount.address,
+      chainlinkProgram: CHAINLINK_PROGRAM_ID,
+      chainlinkFeed: CHAINLINK_SOL_FEED,
     };
   } catch (error) {
     console.error("Failed to initialize margin program:", error);
@@ -118,7 +124,7 @@ async function initializePerpAmm(
 
   // Find pool state PDA
   const [poolState] = PublicKey.findProgramAddressSync(
-    [Buffer.from("pool-state")],
+    [Buffer.from("pool_state")],
     program.programId
   );
 
@@ -151,7 +157,7 @@ async function initializePerpAmm(
     (provider.wallet as anchor.Wallet).payer,
     poolState,
     poolState,
-    6,
+    9,
     lpTokenMintKeypair
   );
 

@@ -8,14 +8,14 @@ pub struct CloseUserState<'info> {
 
     #[account(
         mut,
-        seeds = [b"pool-state".as_ref()],
+        seeds = [b"pool_state".as_ref()],
         bump,
     )]
     pub pool_state: Account<'info, PoolState>,
 
     #[account(
         mut,
-        seeds = [b"user-state".as_ref(), user.key().as_ref()],
+        seeds = [b"user_state".as_ref(), user.key().as_ref()],
         bump,
         constraint = (user_state.owner == user.key() || pool_state.admin == user.key()) @ VaultError::Unauthorized,
         close = user
@@ -25,6 +25,6 @@ pub struct CloseUserState<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_close_user_state(ctx: Context<CloseUserState>) -> Result<()> {
+pub fn handle_close_user_state(_ctx: Context<CloseUserState>) -> Result<()> {
     Ok(())
 }

@@ -35,6 +35,10 @@ pub struct MarginVault {
     pub sol_fees_accumulated: u64,
     /// Accumulated USDC fees
     pub usdc_fees_accumulated: u64,
+    /// Chainlink program ID
+    pub chainlink_program: Pubkey,
+    /// Chainlink SOL/USD price feed
+    pub chainlink_feed: Pubkey,
 }
 
 impl MarginAccount {
@@ -56,5 +60,7 @@ impl MarginVault {
         8 + // withdrawal_timelock
         1 + // bump
         8 + // sol_fees_accumulated
-        8; // usdc_fees_accumulated
+        8 + // usdc_fees_accumulated
+        32 + // chainlink_program
+        32; // chainlink_feed
 }

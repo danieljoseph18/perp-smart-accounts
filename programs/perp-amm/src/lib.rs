@@ -17,6 +17,8 @@ pub const CHAINLINK_PROGRAM_ID: &str = "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJ
 pub const MAINNET_SOL_PRICE_FEED: &str = "CH31Xns5z3M1cTAbKW34jcxPPciazARpijcHj9rxtemt";
 pub const DEVNET_SOL_PRICE_FEED: &str = "99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR";
 
+pub const NATIVE_MINT: &str = "So11111111111111111111111111111111111111112";
+
 #[event]
 pub struct RewardsClaimed {
     pub user: Pubkey,

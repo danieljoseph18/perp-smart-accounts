@@ -123,6 +123,8 @@ describe("perp-margin-accounts liquidate", () => {
     console.log("Program ID:", program.programId.toString());
 
     // Setup mock Chainlink program and feed
+    // Note: The program can now accept these addresses during initialization
+    // instead of using hardcoded addresses, which makes testing much easier
     mockChainlinkProgram = Keypair.generate().publicKey;
     mockChainlinkFeed = Keypair.generate().publicKey;
 
@@ -153,7 +155,7 @@ describe("perp-margin-accounts liquidate", () => {
 
     // Create mock pool state
     [poolStatePda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("pool-state")],
+      [Buffer.from("pool_state")],
       mockPerpAmmProgramId
     );
     console.log("Pool state PDA:", poolStatePda.toString());
@@ -239,9 +241,13 @@ describe("perp-margin-accounts liquidate", () => {
     usdcVaultAccount = usdcVault.address;
     console.log("Created USDC vault:", usdcVaultAccount.toString());
 
-    // Initialize the margin vault
+    // Initialize the margin vault with mock Chainlink addresses
     await program.methods
-      .initialize(new anchor.BN(withdrawalTimelock))
+      .initialize(
+        new anchor.BN(withdrawalTimelock),
+        mockChainlinkProgram,
+        mockChainlinkFeed
+      )
       .accountsStrict({
         authority: provider.wallet.publicKey,
         marginVault: marginVault,

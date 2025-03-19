@@ -19,6 +19,14 @@ const USDC_MINT = process.env.IS_DEVNET
   ? new PublicKey("7ggkvgP7jijLpQBV5GXcqugTMrc2JqDi9tiCH36SVg7A")
   : new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
+// Chainlink program ID (same on all networks)
+const CHAINLINK_PROGRAM_ID = new PublicKey("HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny");
+  
+// SOL/USD Price Feed Address
+const SOL_USD_FEED = process.env.IS_DEVNET
+  ? new PublicKey("99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR") // Devnet
+  : new PublicKey("CH31Xns5z3M1cTAbKW34jcxPPciazARpijcHj9rxtemt"); // Mainnet
+
 async function main() {
   // Configure the client
   const provider = anchor.AnchorProvider.env();
@@ -70,9 +78,13 @@ async function main() {
     // First, create the token accounts for SOL and USDC
     console.log("Creating token accounts...");
 
-    // Now initialize the margin vault
+    // Now initialize the margin vault with chainlink addresses
     await program.methods
-      .initialize(new anchor.BN(withdrawalTimelock))
+      .initialize(
+        new anchor.BN(withdrawalTimelock),
+        CHAINLINK_PROGRAM_ID,
+        SOL_USD_FEED
+      )
       .accountsStrict({
         authority: provider.wallet.publicKey,
         marginVault: marginVault,

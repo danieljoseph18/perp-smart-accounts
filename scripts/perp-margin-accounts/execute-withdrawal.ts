@@ -63,7 +63,7 @@ async function main() {
 
   // Derive the pool state PDA
   const [poolState] = PublicKey.findProgramAddressSync(
-    [Buffer.from("pool-state")],
+    [Buffer.from("pool_state")],
     new PublicKey(process.env.PERP_AMM_PROGRAM_ID!)
   );
 

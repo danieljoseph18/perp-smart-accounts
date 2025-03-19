@@ -9,7 +9,7 @@ pub struct ForceCloseUserState<'info> {
 
     #[account(
         mut,
-        seeds = [b"pool-state".as_ref()],
+        seeds = [b"pool_state".as_ref()],
         bump,
     )]
     pub pool_state: Account<'info, PoolState>,
@@ -17,7 +17,7 @@ pub struct ForceCloseUserState<'info> {
     /// CHECK: Intentionally not deserializing
     #[account(
         mut,
-        seeds = [b"user-state".as_ref(), target_user.key().as_ref()],
+        seeds = [b"user_state".as_ref(), target_user.key().as_ref()],
         bump
     )]
     pub user_state: UncheckedAccount<'info>,

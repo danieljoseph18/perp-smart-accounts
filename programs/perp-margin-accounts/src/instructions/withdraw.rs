@@ -6,9 +6,6 @@ use perp_amm::{
     state::PoolState,
     cpi::{admin_withdraw, admin_deposit},
     program::PerpAmm,
-    CHAINLINK_PROGRAM_ID,
-    DEVNET_SOL_PRICE_FEED,
-    MAINNET_SOL_PRICE_FEED,
 };
 
 #[derive(Accounts)]
@@ -80,7 +77,7 @@ pub struct ExecuteWithdrawal<'info> {
     /// The liquidity pool's state account
     #[account(
         mut,
-        seeds = [b"pool-state".as_ref()],
+        seeds = [b"pool_state".as_ref()],
         bump
     )]
     pub pool_state: Account<'info, PoolState>,
@@ -93,18 +90,12 @@ pub struct ExecuteWithdrawal<'info> {
     )]
     pub pool_vault_account: Account<'info, TokenAccount>,
 
-    /// CHECK: Validated in constraint
-    #[account(address = CHAINLINK_PROGRAM_ID.parse::<Pubkey>().unwrap())]
+    /// CHECK: Validated in constraint against stored value in margin vault
+    #[account(address = margin_vault.chainlink_program)]
     pub chainlink_program: AccountInfo<'info>,
 
-    /// CHECK: Validated in constraint
-    #[account(
-        address = if cfg!(feature = "devnet") {
-            DEVNET_SOL_PRICE_FEED
-        } else {
-            MAINNET_SOL_PRICE_FEED
-        }.parse::<Pubkey>().unwrap()
-    )]
+    /// CHECK: Validated in constraint against stored value in margin vault
+    #[account(address = margin_vault.chainlink_feed)]
     pub chainlink_feed: AccountInfo<'info>,
 
     #[account(
@@ -114,6 +105,7 @@ pub struct ExecuteWithdrawal<'info> {
     
     pub token_program: Program<'info, Token>,
     pub liquidity_pool_program: Program<'info, PerpAmm>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -342,10 +334,11 @@ fn process_positive_pnl(
             admin: ctx.accounts.authority.to_account_info(),
             pool_state: ctx.accounts.pool_state.to_account_info(),
             vault_account: ctx.accounts.sol_vault.to_account_info(),
-            admin_token_account: ctx.accounts.sol_vault.to_account_info(),
+            admin_token_account: Some(ctx.accounts.sol_vault.to_account_info()),
             chainlink_program: ctx.accounts.chainlink_program.to_account_info(),
             chainlink_feed: ctx.accounts.chainlink_feed.to_account_info(),
             token_program: ctx.accounts.token_program.to_account_info(),
+            system_program: ctx.accounts.system_program.to_account_info(),
         };
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
         admin_withdraw(cpi_ctx, pnl_sol_native)?;
@@ -365,10 +358,11 @@ fn process_positive_pnl(
             admin: ctx.accounts.authority.to_account_info(),
             pool_state: ctx.accounts.pool_state.to_account_info(),
             vault_account: ctx.accounts.usdc_vault.to_account_info(),
-            admin_token_account: ctx.accounts.usdc_vault.to_account_info(),
+            admin_token_account: Some(ctx.accounts.usdc_vault.to_account_info()),
             chainlink_program: ctx.accounts.chainlink_program.to_account_info(),
             chainlink_feed: ctx.accounts.chainlink_feed.to_account_info(),
             token_program: ctx.accounts.token_program.to_account_info(),
+            system_program: ctx.accounts.system_program.to_account_info(),
         };
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
         admin_withdraw(cpi_ctx, pnl_usdc_native)?;
@@ -410,11 +404,12 @@ fn process_negative_pnl(
         let cpi_accounts = perp_amm::cpi::accounts::AdminDeposit {
             admin: ctx.accounts.authority.to_account_info(),
             pool_state: ctx.accounts.pool_state.to_account_info(),
-            admin_token_account: ctx.accounts.sol_vault.to_account_info(),
+            admin_token_account: Some(ctx.accounts.sol_vault.to_account_info()),
             vault_account: ctx.accounts.sol_vault.to_account_info(),
             chainlink_program: ctx.accounts.chainlink_program.to_account_info(),
             chainlink_feed: ctx.accounts.chainlink_feed.to_account_info(),
             token_program: ctx.accounts.token_program.to_account_info(),
+            system_program: ctx.accounts.system_program.to_account_info(),
         };
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
         admin_deposit(cpi_ctx, deduct_sol)?;
@@ -426,11 +421,12 @@ fn process_negative_pnl(
         let cpi_accounts = perp_amm::cpi::accounts::AdminDeposit {
             admin: ctx.accounts.authority.to_account_info(),
             pool_state: ctx.accounts.pool_state.to_account_info(),
-            admin_token_account: ctx.accounts.usdc_vault.to_account_info(),
+            admin_token_account: Some(ctx.accounts.usdc_vault.to_account_info()),
             vault_account: ctx.accounts.usdc_vault.to_account_info(),
             chainlink_program: ctx.accounts.chainlink_program.to_account_info(),
             chainlink_feed: ctx.accounts.chainlink_feed.to_account_info(),
             token_program: ctx.accounts.token_program.to_account_info(),
+            system_program: ctx.accounts.system_program.to_account_info(),
         };
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
         admin_deposit(cpi_ctx, deduct_usdc)?;

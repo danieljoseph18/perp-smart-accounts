@@ -9,7 +9,7 @@ pub struct ClaimFees<'info> {
 
     #[account(
         mut,
-        seeds = [b"pool-state".as_ref()],
+        seeds = [b"pool_state".as_ref()],
         bump,
         constraint = pool_state.admin == admin.key() @ VaultError::Unauthorized
     )]
@@ -61,7 +61,7 @@ pub fn handle_claim_fees(ctx: Context<ClaimFees>) -> Result<()> {
             },
         );
         token::transfer(
-            cpi_ctx_sol.with_signer(&[&[b"pool-state".as_ref(), &[ctx.bumps.pool_state]]]),
+            cpi_ctx_sol.with_signer(&[&[b"pool_state".as_ref(), &[ctx.bumps.pool_state]]]),
             sol_amount,
         )?;
 
@@ -82,7 +82,7 @@ pub fn handle_claim_fees(ctx: Context<ClaimFees>) -> Result<()> {
             },
         );
         token::transfer(
-            cpi_ctx_usdc.with_signer(&[&[b"pool-state".as_ref(), &[ctx.bumps.pool_state]]]),
+            cpi_ctx_usdc.with_signer(&[&[b"pool_state".as_ref(), &[ctx.bumps.pool_state]]]),
             usdc_amount,
         )?;
 

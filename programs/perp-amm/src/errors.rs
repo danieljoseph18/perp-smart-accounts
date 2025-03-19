@@ -20,4 +20,8 @@ pub enum VaultError {
     NoLPTokens,
     #[msg("Insufficient reward balance.")]
     InsufficientRewardBalance,
+    #[msg("Token account not provided when required")]
+    TokenAccountNotProvided,
+    #[msg("Invalid token account provided")]
+    InvalidTokenAccount,
 }

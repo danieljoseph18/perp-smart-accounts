@@ -31,7 +31,12 @@ pub struct Initialize<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-pub fn handle_initialize(ctx: Context<Initialize>, withdrawal_timelock: i64) -> Result<()> {
+pub fn handle_initialize(
+    ctx: Context<Initialize>, 
+    withdrawal_timelock: i64,
+    chainlink_program: Pubkey,
+    chainlink_feed: Pubkey,
+) -> Result<()> {
     let margin_vault = &mut ctx.accounts.margin_vault;
 
     margin_vault.sol_vault = ctx.accounts.sol_vault.key();
@@ -39,6 +44,8 @@ pub fn handle_initialize(ctx: Context<Initialize>, withdrawal_timelock: i64) -> 
     margin_vault.authority = ctx.accounts.authority.key();
     margin_vault.withdrawal_timelock = withdrawal_timelock;
     margin_vault.bump = ctx.bumps.margin_vault;
+    margin_vault.chainlink_program = chainlink_program;
+    margin_vault.chainlink_feed = chainlink_feed;
 
     Ok(())
 }

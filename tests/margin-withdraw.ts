@@ -157,7 +157,7 @@ describe("perp-margin-accounts withdraw", () => {
 
     // Create mock pool state
     [poolStatePda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("pool-state")],
+      [Buffer.from("pool_state")],
       mockPerpAmmProgramId
     );
     console.log("Pool state PDA:", poolStatePda.toString());

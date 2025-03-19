@@ -11,14 +11,14 @@ pub struct ClaimRewards<'info> {
 
     #[account(
         mut,
-        seeds = [b"pool-state".as_ref()],
+        seeds = [b"pool_state".as_ref()],
         bump
     )]
     pub pool_state: Account<'info, PoolState>,
 
     #[account(
         mut,
-        seeds = [b"user-state".as_ref(), user.key().as_ref()],
+        seeds = [b"user_state".as_ref(), user.key().as_ref()],
         bump,
         constraint = user_state.owner == user.key()
     )]
@@ -111,7 +111,7 @@ pub fn handle_claim_rewards(ctx: Context<ClaimRewards>) -> Result<()> {
         },
     );
     token::transfer(
-        cpi_ctx.with_signer(&[&[b"pool-state".as_ref(), &[pool_state_bump]]]),
+        cpi_ctx.with_signer(&[&[b"pool_state".as_ref(), &[pool_state_bump]]]),
         to_claim,
     )?;
 

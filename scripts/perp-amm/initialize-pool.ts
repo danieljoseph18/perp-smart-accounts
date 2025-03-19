@@ -51,7 +51,7 @@ async function main() {
 
   // Find pool state PDA
   const [poolState, poolStateBump] = PublicKey.findProgramAddressSync(
-    [Buffer.from("pool-state")],
+    [Buffer.from("pool_state")],
     program.programId
   );
   console.log(
@@ -60,7 +60,7 @@ async function main() {
     "with bump:",
     poolStateBump,
     "using seed:",
-    "pool-state"
+    "pool_state"
   );
 
   // Create vault accounts
