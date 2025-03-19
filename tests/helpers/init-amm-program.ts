@@ -2,7 +2,6 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { PerpAmm } from "../../target/types/perp_amm";
 import { PerpMarginAccounts } from "../../target/types/perp_margin_accounts";
-import { ChainlinkMock } from "../../target/types/chainlink_mock";
 import {
   PublicKey,
   Keypair,
@@ -26,7 +25,8 @@ export async function setupAmmProgram(
   provider: anchor.AnchorProvider,
   program: Program<PerpAmm>,
   marginProgram: Program<PerpMarginAccounts>,
-  chainlinkMockProgram: Program<ChainlinkMock>,
+  chainlinkProgram: PublicKey,
+  chainlinkFeed: PublicKey,
   admin: Keypair,
   user1: Keypair,
   user2: Keypair
@@ -48,17 +48,13 @@ export async function setupAmmProgram(
   let lpTokenMint: PublicKey;
   let solMint: PublicKey;
   let lpTokenMintKeypair: Keypair;
-  
+
   // Set up token accounts
   let adminUsdcAccount: PublicKey;
   let adminSolAccount: PublicKey;
   let user1UsdcAccount: PublicKey;
   let user2UsdcAccount: PublicKey;
-  
-  // Set up Chainlink mock
-  let mockChainlinkFeed: PublicKey;
-  let mockChainlinkFeedKeypair: Keypair;
-  
+
   // Check if pool state exists
   const poolStateInfo = await provider.connection.getAccountInfo(poolState);
 
@@ -69,7 +65,6 @@ export async function setupAmmProgram(
     const poolStateAccount = await program.account.poolState.fetch(poolState);
 
     // Set all the configuration from the pool state
-    mockChainlinkFeed = poolStateAccount.chainlinkPriceFeed;
     lpTokenMint = poolStateAccount.lpTokenMint;
     solMint = new PublicKey("So11111111111111111111111111111111111111112"); // Wrapped SOL is always this address
 
@@ -90,7 +85,7 @@ export async function setupAmmProgram(
     usdcMint = usdcVaultInfo.mint;
 
     console.log("Using existing configuration:");
-    console.log("- Chainlink feed:", mockChainlinkFeed.toString());
+    console.log("- Chainlink feed:", chainlinkFeed.toString());
     console.log("- LP Token mint:", lpTokenMint.toString());
     console.log("- SOL vault:", solVault.address.toString());
     console.log("- USDC vault:", usdcVault.address.toString());
@@ -99,33 +94,7 @@ export async function setupAmmProgram(
     // Create or get token accounts for testing
     await setupUserAccounts();
   } else {
-    console.log(
-      "No existing pool state found, will create new configuration"
-    );
-
-    // Create Chainlink feed if it doesn't exist
-    mockChainlinkFeedKeypair = Keypair.generate();
-    mockChainlinkFeed = mockChainlinkFeedKeypair.publicKey;
-
-    // Fund the feed account so it exists on chain
-    const mockFeedTx = await provider.connection.requestAirdrop(
-      mockChainlinkFeed,
-      LAMPORTS_PER_SOL / 100
-    );
-    await provider.connection.confirmTransaction(mockFeedTx);
-
-    // Initialize the mock Chainlink feed with an initial price
-    await chainlinkMockProgram.methods
-      .initialize(new BN(100_000_000)) // $100.00
-      .accountsStrict({
-        feed: mockChainlinkFeed,
-        owner: admin.publicKey,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([admin, mockChainlinkFeedKeypair])
-      .rpc();
-
-    console.log("Created new Chainlink feed:", mockChainlinkFeed.toString());
+    console.log("No existing pool state found, will create new configuration");
 
     // Set up all accounts and configurations
     await setupInitialConfiguration();
@@ -362,18 +331,12 @@ export async function setupAmmProgram(
     const wrapTx = new anchor.web3.Transaction().add(wrapIx);
     await provider.sendAndConfirm(wrapTx, [admin]);
 
-    // Derive margin vault PDA
-    const [marginVault] = PublicKey.findProgramAddressSync(
-      [Buffer.from("margin_vault")],
-      marginProgram.programId
-    );
-
     // Create vault accounts with margin vault PDA as owner
     solVault = await getOrCreateAssociatedTokenAccount(
       provider.connection,
       admin,
       solMint,
-      marginVault,
+      poolState,
       true
     );
 
@@ -381,21 +344,21 @@ export async function setupAmmProgram(
       provider.connection,
       admin,
       usdcMint,
-      marginVault,
+      poolState,
       true
     );
 
     console.log("SOL vault:", solVault.address.toString());
     console.log("USDC vault:", usdcVault.address.toString());
 
-    // Initialize margin program
+    // Initialize margin program - pass mint addresses instead of vault addresses
     await initializeMarginProgram(
       provider,
       marginProgram,
-      solVault.address,
-      usdcVault.address,
-      chainlinkMockProgram.programId,
-      mockChainlinkFeed
+      solMint,
+      usdcMint,
+      chainlinkProgram,
+      chainlinkFeed
     );
 
     // Create a keypair for the LP token mint
@@ -414,8 +377,6 @@ export async function setupAmmProgram(
         usdcRewardVault: usdcVault.address, // Using same vault for simplicity
         lpTokenMint,
         tokenProgram: TOKEN_PROGRAM_ID,
-        chainlinkProgramId: chainlinkMockProgram.programId,
-        chainlinkPriceFeed: mockChainlinkFeed,
         systemProgram: SystemProgram.programId,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY,
       })
@@ -433,10 +394,10 @@ export async function setupAmmProgram(
     lpTokenMint,
     solVault: solVault.address,
     usdcVault: usdcVault.address,
-    mockChainlinkFeed,
+    chainlinkFeed,
     adminSolAccount,
     adminUsdcAccount,
     user1UsdcAccount,
-    user2UsdcAccount
+    user2UsdcAccount,
   };
 }

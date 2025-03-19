@@ -24,4 +24,6 @@ pub enum VaultError {
     TokenAccountNotProvided,
     #[msg("Invalid token account provided")]
     InvalidTokenAccount,
+    #[msg("Insufficient funds to withdraw")]
+    InsufficientFunds,
 }

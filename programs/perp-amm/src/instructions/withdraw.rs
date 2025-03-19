@@ -26,22 +26,39 @@ pub struct Withdraw<'info> {
     #[account(mut, constraint = lp_token_mint.key() == pool_state.lp_token_mint)]
     pub lp_token_mint: Account<'info, Mint>,
 
-    #[account(mut, constraint = user_lp_token_account.owner == user.key(), constraint = user_lp_token_account.mint == lp_token_mint.key())]
+    #[account(
+        mut,
+        constraint = user_lp_token_account.owner == user.key(),
+        constraint = user_lp_token_account.mint == lp_token_mint.key()
+    )]
     pub user_lp_token_account: Account<'info, TokenAccount>,
 
-    #[account(mut, constraint = vault_account.key() == pool_state.sol_vault || vault_account.key() == pool_state.usdc_vault)]
+    #[account(
+        mut,
+        constraint = vault_account.key() == pool_state.sol_vault 
+            || vault_account.key() == pool_state.usdc_vault
+    )]
     pub vault_account: Account<'info, TokenAccount>,
 
-    // Make user_token_account optional for SOL withdrawals
+    // For SOL withdrawals, require this account; it is a temporary WSOL account
+    // that will be closed (unwrapped) returning native SOL to the user.
     #[account(mut)]
-    pub user_token_account: Option<Account<'info, TokenAccount>>,
+    pub user_token_account: Account<'info, TokenAccount>,
 
     /// CHECK: Validated in constraint
     #[account(address = CHAINLINK_PROGRAM_ID.parse::<Pubkey>().unwrap())]
     pub chainlink_program: AccountInfo<'info>,
 
     /// CHECK: Validated in constraint
-    #[account(address = if cfg!(feature = "devnet") { DEVNET_SOL_PRICE_FEED } else { MAINNET_SOL_PRICE_FEED }.parse::<Pubkey>().unwrap())]
+    #[account(
+        address = if cfg!(feature = "devnet") {
+            DEVNET_SOL_PRICE_FEED
+        } else {
+            MAINNET_SOL_PRICE_FEED
+        }
+        .parse::<Pubkey>()
+        .unwrap()
+    )]
     pub chainlink_feed: AccountInfo<'info>,
 
     pub token_program: Program<'info, Token>,
@@ -50,23 +67,18 @@ pub struct Withdraw<'info> {
 }
 
 pub fn handle_withdraw(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<()> {
-    // Get pool state account info first for immutable info we'll need later
+    // --- Pre-burn & reward update logic remains unchanged ---
     let pool_state_info = ctx.accounts.pool_state.to_account_info();
     let pool_state_bump = ctx.bumps.pool_state;
-
-    // Now get mutable references
     let pool_state = &mut ctx.accounts.pool_state;
     let user_state = &mut ctx.accounts.user_state;
 
-    // 1. Check LP balance
     if user_state.lp_token_balance < lp_token_amount {
         return err!(VaultError::InsufficientLpBalance);
     }
 
-    // 2. Update rewards
     update_rewards(pool_state, user_state, &ctx.accounts.lp_token_mint)?;
 
-    // 3. Burn LP tokens
     token::burn(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
@@ -79,17 +91,14 @@ pub fn handle_withdraw(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<(
         lp_token_amount,
     )?;
 
-    // 4. Adjust user LP balance
     user_state.lp_token_balance = user_state
         .lp_token_balance
         .checked_sub(lp_token_amount)
         .ok_or(VaultError::MathError)?;
 
-    // Save references to sol and usdc vaults before mutable borrow
     let sol_vault = pool_state.sol_vault;
     let usdc_vault = pool_state.usdc_vault;
 
-    // 5. Compute AUM
     if ctx.accounts.vault_account.key() == sol_vault {
         let round = chainlink::latest_round_data(
             ctx.accounts.chainlink_program.to_account_info(),
@@ -97,12 +106,12 @@ pub fn handle_withdraw(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<(
         )?;
         pool_state.sol_usd_price = round.answer;
     }
-    let total_sol_usd = get_sol_usd_value(pool_state.sol_deposited, pool_state.sol_usd_price)?;
+    let total_sol_usd =
+        get_sol_usd_value(pool_state.sol_deposited, pool_state.sol_usd_price)?;
     let current_aum = total_sol_usd
         .checked_add(pool_state.usdc_deposited)
         .ok_or(VaultError::MathError)?;
 
-    // 6. Calculate withdrawal USD value
     let lp_supply = ctx.accounts.lp_token_mint.supply.max(1);
     let withdrawal_usd_value = lp_token_amount
         .checked_mul(current_aum)
@@ -110,7 +119,6 @@ pub fn handle_withdraw(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<(
         .checked_div(lp_supply)
         .ok_or(VaultError::MathError)?;
 
-    // 7. Convert to token amount and apply fee
     let token_amount = if ctx.accounts.vault_account.key() == sol_vault {
         get_sol_amount_from_usd(withdrawal_usd_value, pool_state.sol_usd_price)?
     } else if ctx.accounts.vault_account.key() == usdc_vault {
@@ -118,6 +126,7 @@ pub fn handle_withdraw(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<(
     } else {
         return err!(VaultError::InvalidTokenMint);
     };
+
     let fee_amount = token_amount
         .checked_mul(1)
         .ok_or(VaultError::MathError)?
@@ -127,7 +136,7 @@ pub fn handle_withdraw(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<(
         .checked_sub(fee_amount)
         .ok_or(VaultError::MathError)?;
 
-    // 8. Update fees
+    // --- Fee update logic remains unchanged ---
     if ctx.accounts.vault_account.key() == sol_vault {
         pool_state.accumulated_sol_fees = pool_state
             .accumulated_sol_fees
@@ -140,91 +149,62 @@ pub fn handle_withdraw(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<(
             .ok_or(VaultError::MathError)?;
     }
 
-    // 9. Transfer tokens
-    // Check if this is a SOL vault (WSOL)
-    let is_sol_vault = ctx.accounts.vault_account.mint == NATIVE_MINT.parse::<Pubkey>().unwrap();
+    // --- Token Transfer & SOL Unwrapping Flow ---
+    let is_sol_vault =
+        ctx.accounts.vault_account.mint == NATIVE_MINT.parse::<Pubkey>().unwrap();
 
     if is_sol_vault {
-        // Transfer SOL directly to the user
         let pool_seeds = &[b"pool_state".as_ref(), &[pool_state_bump]];
 
-        // First transfer WSOL from vault to user's wallet or temporary account
-        let recipient_key = if let Some(user_token_account) = &ctx.accounts.user_token_account {
-            user_token_account.key()
-        } else {
-            ctx.accounts.user.key()
-        };
-
+        // (1) Transfer WSOL from the pool vault to the user's temporary WSOL account.
         let transfer_ix = anchor_spl::token::spl_token::instruction::transfer(
             &ctx.accounts.token_program.key(),
             &ctx.accounts.vault_account.key(),
-            &recipient_key,
+            &ctx.accounts.user_token_account.key(),
             &pool_state_info.key(),
             &[&pool_state_info.key()],
             withdrawal_amount,
         )?;
-
-        // Execute the transfer with the pool state PDA as signer
-        let recipient_account_info =
-            if let Some(user_token_account) = &ctx.accounts.user_token_account {
-                user_token_account.to_account_info()
-            } else {
-                ctx.accounts.user.to_account_info()
-            };
-
         anchor_lang::solana_program::program::invoke_signed(
             &transfer_ix,
             &[
                 ctx.accounts.vault_account.to_account_info(),
-                recipient_account_info,
+                ctx.accounts.user_token_account.to_account_info(),
                 pool_state_info.clone(),
                 ctx.accounts.token_program.to_account_info(),
             ],
             &[pool_seeds],
         )?;
 
-        // If using user's own WSOL account and they want to close it
-        if let Some(user_token_account) = &ctx.accounts.user_token_account {
-            // Unwrap WSOL by closing the account
-            let close_ix = anchor_spl::token::spl_token::instruction::close_account(
-                &ctx.accounts.token_program.key(),
-                &user_token_account.key(),
-                &ctx.accounts.user.key(),
-                &ctx.accounts.user.key(),
-                &[&ctx.accounts.user.key()],
-            )?;
-
-            // Execute the close instruction
-            anchor_lang::solana_program::program::invoke(
-                &close_ix,
-                &[
-                    user_token_account.to_account_info(),
-                    ctx.accounts.user.to_account_info(),
-                    ctx.accounts.token_program.to_account_info(),
-                ],
-            )?;
-        }
+        // (2) “Unwrap” the WSOL by closing the temporary account,
+        // which sends its lamports (i.e. the withdrawn SOL) to the user.
+        let close_ix = anchor_spl::token::spl_token::instruction::close_account(
+            &ctx.accounts.token_program.key(),
+            &ctx.accounts.user_token_account.key(),
+            &ctx.accounts.user.key(),
+            &ctx.accounts.user.key(),
+            &[&ctx.accounts.user.key()],
+        )?;
+        anchor_lang::solana_program::program::invoke(
+            &close_ix,
+            &[
+                ctx.accounts.user_token_account.to_account_info(),
+                ctx.accounts.user.to_account_info(),
+                ctx.accounts.token_program.to_account_info(),
+            ],
+        )?;
     } else {
-        // Regular SPL token transfer for non-SOL tokens
-        // Make sure user_token_account is provided when not dealing with native SOL
-        let user_token_account = ctx
-            .accounts
-            .user_token_account
-            .as_ref()
-            .ok_or(error!(VaultError::TokenAccountNotProvided))?;
-
-        // Ensure token account mint matches vault
+        // For non-SOL tokens (e.g. USDC), we simply transfer them.
         require!(
-            user_token_account.mint == ctx.accounts.vault_account.mint,
+            ctx.accounts.user_token_account.mint == ctx.accounts.vault_account.mint,
             VaultError::InvalidTokenMint
         );
-
         token::transfer(
             CpiContext::new(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.vault_account.to_account_info(),
-                    to: user_token_account.to_account_info(),
+                    to: ctx.accounts.user_token_account.to_account_info(),
                     authority: pool_state_info,
                 },
             )
@@ -233,7 +213,7 @@ pub fn handle_withdraw(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<(
         )?;
     }
 
-    // 10. Update pool deposited amounts
+    // --- Update pool deposit totals ---
     if ctx.accounts.vault_account.key() == sol_vault {
         pool_state.sol_deposited = pool_state
             .sol_deposited
