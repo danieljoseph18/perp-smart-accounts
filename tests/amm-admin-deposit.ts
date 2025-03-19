@@ -12,18 +12,19 @@ import {
   createMint,
   mintTo,
   getAccount,
-  createAssociatedTokenAccount,
   getOrCreateAssociatedTokenAccount,
   Account,
+  getMint,
 } from "@solana/spl-token";
 import { assert } from "chai";
 import BN from "bn.js";
 import * as dotenv from "dotenv";
 import { PerpMarginAccounts } from "../target/types/perp_margin_accounts";
 import { initializeMarginProgram } from "./helpers/init-margin-program";
+import { ChainlinkMock } from "../target/types/chainlink_mock";
 dotenv.config();
 
-describe("perp-amm (initialization in progress)", () => {
+describe("perp-amm (with configuration persistence)", () => {
   // Configure the client to use the local cluster
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
@@ -34,16 +35,14 @@ describe("perp-amm (initialization in progress)", () => {
   const marginProgram = anchor.workspace
     .PerpMarginAccounts as Program<PerpMarginAccounts>;
 
-  // Constants for standard Chainlink integration
-  // For testing, we'll mock these in each test
+  // Get the deployed chainlink_mock program
+  const chainlinkMockProgram = anchor.workspace
+    .ChainlinkMock as Program<ChainlinkMock>;
 
-  // Set up common accounts
   // Use a fixed keypair for admin
   const admin = Keypair.fromSeed(Uint8Array.from(Array(32).fill(1)));
   const user1 = Keypair.generate();
   const user2 = Keypair.generate();
-
-  let _: number;
 
   // Set up token mints and vaults
   let usdcMint: PublicKey;
@@ -54,7 +53,6 @@ describe("perp-amm (initialization in progress)", () => {
 
   // Set up pool state
   let poolState: PublicKey;
-  let poolStateBump: number;
 
   let lpTokenMintKeypair: Keypair;
 
@@ -64,53 +62,245 @@ describe("perp-amm (initialization in progress)", () => {
   let user1UsdcAccount: PublicKey;
   let user2UsdcAccount: PublicKey;
 
-  let mockChainlinkProgram: PublicKey;
   let mockChainlinkFeed: PublicKey;
+  let mockChainlinkFeedKeypair: Keypair;
 
-  beforeEach(async () => {
-    console.log("Airdropping SOL to admin and users...");
+  // Flag to indicate if this is the first run
+  let isFirstRun = false;
 
-    // Airdrop SOL to admin and users with confirmations
-    const adminAirdropTx = await provider.connection.requestAirdrop(
-      admin.publicKey,
-      100 * LAMPORTS_PER_SOL
+  // Global configuration state
+  let configInitialized = false;
+
+  before(async () => {
+    console.log("=== Starting test setup ===");
+
+    // Derive PDA for pool state
+    [poolState] = PublicKey.findProgramAddressSync(
+      [Buffer.from("pool_state")],
+      program.programId
     );
-    await provider.connection.confirmTransaction(adminAirdropTx);
 
-    const user1AirdropTx = await provider.connection.requestAirdrop(
-      user1.publicKey,
-      10 * LAMPORTS_PER_SOL
+    console.log("Pool State PDA:", poolState.toString());
+
+    // Check if pool state exists
+    const poolStateInfo = await provider.connection.getAccountInfo(poolState);
+
+    if (poolStateInfo) {
+      console.log("✓ Found existing pool state, using existing configuration");
+
+      // Fetch the pool state to get all the configuration
+      const poolStateAccount = await program.account.poolState.fetch(poolState);
+
+      // Set all the configuration from the pool state
+      mockChainlinkFeed = poolStateAccount.chainlinkPriceFeed;
+      lpTokenMint = poolStateAccount.lpTokenMint;
+      solMint = new PublicKey("So11111111111111111111111111111111111111112"); // Wrapped SOL is always this address
+
+      // Use the vaults from the pool state
+      const solVaultInfo = await getAccount(
+        provider.connection,
+        poolStateAccount.solVault
+      );
+      solVault = solVaultInfo;
+
+      const usdcVaultInfo = await getAccount(
+        provider.connection,
+        poolStateAccount.usdcVault
+      );
+      usdcVault = usdcVaultInfo;
+
+      // Get USDC mint from the USDC vault
+      usdcMint = usdcVaultInfo.mint;
+
+      console.log("Using existing configuration:");
+      console.log("- Chainlink feed:", mockChainlinkFeed.toString());
+      console.log("- LP Token mint:", lpTokenMint.toString());
+      console.log("- SOL vault:", solVault.address.toString());
+      console.log("- USDC vault:", usdcVault.address.toString());
+      console.log("- USDC mint:", usdcMint.toString());
+
+      // Create or get token accounts for testing
+      await setupUserAccounts();
+    } else {
+      console.log(
+        "No existing pool state found, will create new configuration"
+      );
+      isFirstRun = true;
+
+      // Create Chainlink feed if it doesn't exist
+      mockChainlinkFeedKeypair = Keypair.generate();
+      mockChainlinkFeed = mockChainlinkFeedKeypair.publicKey;
+
+      // Fund the feed account so it exists on chain
+      const mockFeedTx = await provider.connection.requestAirdrop(
+        mockChainlinkFeed,
+        LAMPORTS_PER_SOL / 100
+      );
+      await provider.connection.confirmTransaction(mockFeedTx);
+
+      // Initialize the mock Chainlink feed with an initial price
+      await chainlinkMockProgram.methods
+        .initialize(new BN(100_000_000)) // $100.00
+        .accountsStrict({
+          feed: mockChainlinkFeed,
+          owner: admin.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([admin, mockChainlinkFeedKeypair])
+        .rpc();
+
+      console.log("Created new Chainlink feed:", mockChainlinkFeed.toString());
+
+      // Set up all accounts and configurations
+      await setupInitialConfiguration();
+    }
+
+    configInitialized = true;
+  });
+
+  // Helper function to setup user accounts for testing
+  async function setupUserAccounts() {
+    console.log("Setting up user accounts for testing...");
+
+    // Airdrop SOL to admin and users for transaction fees
+    await ensureMinimumBalance(admin.publicKey, 5 * LAMPORTS_PER_SOL);
+    await ensureMinimumBalance(user1.publicKey, 2 * LAMPORTS_PER_SOL);
+    await ensureMinimumBalance(user2.publicKey, 2 * LAMPORTS_PER_SOL);
+
+    // Get or create token accounts for all users
+    const adminUsdcAccountInfo = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      admin,
+      usdcMint,
+      admin.publicKey
     );
-    await provider.connection.confirmTransaction(user1AirdropTx);
+    adminUsdcAccount = adminUsdcAccountInfo.address;
 
-    const user2AirdropTx = await provider.connection.requestAirdrop(
-      user2.publicKey,
-      10 * LAMPORTS_PER_SOL
+    const user1UsdcAccountInfo = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      admin,
+      usdcMint,
+      user1.publicKey
     );
-    await provider.connection.confirmTransaction(user2AirdropTx);
+    user1UsdcAccount = user1UsdcAccountInfo.address;
 
-    console.log("Airdrops complete. Creating usdc mint...");
-
-    // Create a mock Chainlink program and feed accounts if they don't exist
-    mockChainlinkProgram = new PublicKey(
-      "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny"
+    const user2UsdcAccountInfo = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      admin,
+      usdcMint,
+      user2.publicKey
     );
-    mockChainlinkFeed = new PublicKey(
-      "99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR"
-    ); // Devnet feed
+    user2UsdcAccount = user2UsdcAccountInfo.address;
 
-    // Fund the keypairs so they exist on chain
-    const mockChainlinkTx = await provider.connection.requestAirdrop(
-      mockChainlinkProgram,
-      LAMPORTS_PER_SOL / 100
+    // Get or create SOL token account for admin
+    const adminSolAccountInfo = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      admin,
+      solMint,
+      admin.publicKey
     );
-    await provider.connection.confirmTransaction(mockChainlinkTx);
+    adminSolAccount = adminSolAccountInfo.address;
 
-    const mockFeedTx = await provider.connection.requestAirdrop(
-      mockChainlinkFeed,
-      LAMPORTS_PER_SOL / 100
-    );
-    await provider.connection.confirmTransaction(mockFeedTx);
+    // Mint some USDC to accounts if they have low balance
+    const adminUsdcBalance = (
+      await getAccount(provider.connection, adminUsdcAccount)
+    ).amount;
+    if (
+      adminUsdcBalance.toString() === "0" ||
+      BigInt(adminUsdcBalance.toString()) < BigInt(10_000_000_000)
+    ) {
+      // Only mint more if we have permission (admin is the mint authority)
+      try {
+        const mintInfo = await getMint(provider.connection, usdcMint);
+        if (mintInfo.mintAuthority?.toString() === admin.publicKey.toString()) {
+          console.log("Minting additional USDC to admin account");
+          await mintTo(
+            provider.connection,
+            admin,
+            usdcMint,
+            adminUsdcAccount,
+            admin.publicKey,
+            1_000_000_000_000 // 1,000,000 USDC
+          );
+
+          // Mint to user accounts if needed
+          const user1UsdcBalance = (
+            await getAccount(provider.connection, user1UsdcAccount)
+          ).amount;
+          if (user1UsdcBalance.toString() === "0") {
+            await mintTo(
+              provider.connection,
+              admin,
+              usdcMint,
+              user1UsdcAccount,
+              admin.publicKey,
+              1_000_000_000 // 1,000 USDC
+            );
+          }
+
+          const user2UsdcBalance = (
+            await getAccount(provider.connection, user2UsdcAccount)
+          ).amount;
+          if (user2UsdcBalance.toString() === "0") {
+            await mintTo(
+              provider.connection,
+              admin,
+              usdcMint,
+              user2UsdcAccount,
+              admin.publicKey,
+              1_000_000_000 // 1,000 USDC
+            );
+          }
+        } else {
+          console.log("Admin is not the mint authority, cannot mint more USDC");
+        }
+      } catch (error) {
+        console.error("Error minting USDC:", error);
+      }
+    }
+
+    // Ensure admin has wrapped SOL for testing
+    const adminSolBalance = (
+      await getAccount(provider.connection, adminSolAccount)
+    ).amount;
+    if (adminSolBalance.toString() === "0") {
+      console.log("Wrapping SOL for admin...");
+      // Wrap native SOL to get wrapped SOL tokens
+      const wrapAmount = 10 * LAMPORTS_PER_SOL; // 10 SOL
+      const wrapIx = SystemProgram.transfer({
+        fromPubkey: admin.publicKey,
+        toPubkey: adminSolAccount,
+        lamports: wrapAmount,
+      });
+
+      const wrapTx = new anchor.web3.Transaction().add(wrapIx);
+      await provider.sendAndConfirm(wrapTx, [admin]);
+    }
+  }
+
+  // Helper function to ensure an account has minimum SOL balance
+  async function ensureMinimumBalance(address: PublicKey, minBalance: number) {
+    const balance = await provider.connection.getBalance(address);
+    if (balance < minBalance) {
+      console.log(`Airdropping SOL to ${address.toString()}...`);
+      const airdropTx = await provider.connection.requestAirdrop(
+        address,
+        minBalance - balance
+      );
+      await provider.connection.confirmTransaction(airdropTx);
+    }
+  }
+
+  // Set up initial configuration (only called on first run)
+  async function setupInitialConfiguration() {
+    console.log("Setting up initial configuration...");
+
+    // Airdrop SOL to admin and users
+    await ensureMinimumBalance(admin.publicKey, 100 * LAMPORTS_PER_SOL);
+    await ensureMinimumBalance(user1.publicKey, 10 * LAMPORTS_PER_SOL);
+    await ensureMinimumBalance(user2.publicKey, 10 * LAMPORTS_PER_SOL);
+
+    console.log("Creating USDC mint...");
 
     // Create USDC mint
     usdcMint = await createMint(
@@ -121,31 +311,32 @@ describe("perp-amm (initialization in progress)", () => {
       6
     );
 
-    console.log("Usdc mint created. Creating token accounts...");
+    console.log("USDC mint created:", usdcMint.toString());
 
     // Create token accounts for all users
-    adminUsdcAccount = await createAssociatedTokenAccount(
+    const adminUsdcAccountInfo = await getOrCreateAssociatedTokenAccount(
       provider.connection,
       admin,
       usdcMint,
       admin.publicKey
     );
+    adminUsdcAccount = adminUsdcAccountInfo.address;
 
-    user1UsdcAccount = await createAssociatedTokenAccount(
+    const user1UsdcAccountInfo = await getOrCreateAssociatedTokenAccount(
       provider.connection,
       admin,
       usdcMint,
       user1.publicKey
     );
+    user1UsdcAccount = user1UsdcAccountInfo.address;
 
-    user2UsdcAccount = await createAssociatedTokenAccount(
+    const user2UsdcAccountInfo = await getOrCreateAssociatedTokenAccount(
       provider.connection,
       admin,
       usdcMint,
       user2.publicKey
     );
-
-    console.log("Token accounts created. Minting initial USDC...");
+    user2UsdcAccount = user2UsdcAccountInfo.address;
 
     // Mint initial USDC to accounts
     await mintTo(
@@ -175,12 +366,8 @@ describe("perp-amm (initialization in progress)", () => {
       1_000_000_000 // 1,000 USDC
     );
 
-    console.log("Creating mock SOL mint...");
-
-    // Use wrapped SOL instead of mock SOL
+    // Use wrapped SOL
     solMint = new PublicKey("So11111111111111111111111111111111111111112");
-
-    console.log("Creating token accounts for admin's wrapped SOL...");
 
     // Create token accounts for admin's wrapped SOL
     const adminSolAccountInfo = await getOrCreateAssociatedTokenAccount(
@@ -191,10 +378,8 @@ describe("perp-amm (initialization in progress)", () => {
     );
     adminSolAccount = adminSolAccountInfo.address;
 
-    console.log("Wrapping SOL for admin...");
-
     // Wrap native SOL to get wrapped SOL tokens
-    const wrapAmount = 50 * LAMPORTS_PER_SOL; // 50 SOL (we airdropped 100 SOL)
+    const wrapAmount = 50 * LAMPORTS_PER_SOL; // 50 SOL
     const wrapIx = SystemProgram.transfer({
       fromPubkey: admin.publicKey,
       toPubkey: adminSolAccount,
@@ -204,44 +389,31 @@ describe("perp-amm (initialization in progress)", () => {
     const wrapTx = new anchor.web3.Transaction().add(wrapIx);
     await provider.sendAndConfirm(wrapTx, [admin]);
 
-    console.log("Deriving PDA for pool state...");
-
-    // Derive PDA for pool state
-    [poolState, poolStateBump] = PublicKey.findProgramAddressSync(
-      [Buffer.from("pool_state")],
-      program.programId
-    );
-
-    // Derive margin vault PDA first
+    // Derive margin vault PDA
     const [marginVault] = PublicKey.findProgramAddressSync(
       [Buffer.from("margin_vault")],
       marginProgram.programId
     );
 
-    console.log("Creating vault accounts...");
+    // Create vault accounts with margin vault PDA as owner
+    solVault = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      admin,
+      solMint,
+      marginVault,
+      true
+    );
 
-    try {
-      // Create vault accounts with margin vault PDA as owner
-      solVault = await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        admin,
-        solMint,
-        marginVault,
-        true
-      );
+    usdcVault = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      admin,
+      usdcMint,
+      marginVault,
+      true
+    );
 
-      usdcVault = await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        admin,
-        usdcMint,
-        marginVault,
-        true
-      );
-    } catch (error: any) {
-      throw error;
-    }
-
-    console.log("Initializing margin program...");
+    console.log("SOL vault:", solVault.address.toString());
+    console.log("USDC vault:", usdcVault.address.toString());
 
     // Initialize margin program
     await initializeMarginProgram(
@@ -249,86 +421,65 @@ describe("perp-amm (initialization in progress)", () => {
       marginProgram,
       solVault.address,
       usdcVault.address,
-      mockChainlinkProgram,
+      chainlinkMockProgram.programId,
       mockChainlinkFeed
     );
 
-    console.log("Initializing Perp AMM program...");
+    // Create a keypair for the LP token mint
+    lpTokenMintKeypair = Keypair.generate();
+    lpTokenMint = lpTokenMintKeypair.publicKey;
 
-    // Check if pool state already exists
-    const poolStateInfo = await provider.connection.getAccountInfo(poolState);
-
-    if (poolStateInfo) {
-      console.log(
-        "✓ Perp AMM program already initialized, skipping initialization"
-      );
-      // We still need to get the LP token mint for later use
-      const poolStateAccount = await program.account.poolState.fetch(poolState);
-      console.log(
-        "Stored admin in PoolState:",
-        poolStateAccount.admin.toString()
-      );
-      console.log("Current admin keypair:", admin.publicKey.toString());
-      lpTokenMint = poolStateAccount.lpTokenMint;
-      return {
+    // Initialize Perp AMM program
+    await program.methods
+      .initialize()
+      .accountsStrict({
+        admin: admin.publicKey,
+        authority: marginProgram.programId,
         poolState,
         solVault: solVault.address,
         usdcVault: usdcVault.address,
+        usdcRewardVault: usdcVault.address, // Using same vault for simplicity
         lpTokenMint,
-      };
-    }
+        tokenProgram: TOKEN_PROGRAM_ID,
+        chainlinkProgramId: chainlinkMockProgram.programId,
+        chainlinkPriceFeed: mockChainlinkFeed,
+        systemProgram: SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([admin, lpTokenMintKeypair])
+      .rpc();
 
-    try {
-      // Create a keypair for the LP token mint
-      lpTokenMintKeypair = Keypair.generate();
-      lpTokenMint = lpTokenMintKeypair.publicKey;
+    console.log("✓ Perp AMM program initialized successfully!");
+    console.log("LP token mint:", lpTokenMint.toString());
+  }
 
-      await program.methods
-        .initialize()
-        .accountsStrict({
-          admin: admin.publicKey,
-          authority: marginProgram.programId,
-          poolState,
-          solVault: solVault.address,
-          usdcVault: usdcVault.address,
-          usdcRewardVault: usdcVault.address, // Using same vault for simplicity
-          lpTokenMint,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-        })
-        .signers([admin, lpTokenMintKeypair])
-        .rpc();
-
-      console.log("✓ Perp AMM program initialized successfully!");
-      return {
-        poolState,
-        solVault: solVault.address,
-        usdcVault: usdcVault.address,
-        lpTokenMint,
-      };
-    } catch (error) {
-      console.error("Failed to initialize Perp AMM:", error);
-      throw error;
+  // Use beforeEach to ensure all accounts are ready for each test
+  beforeEach(async () => {
+    // Ensure configuration is initialized before running tests
+    if (!configInitialized) {
+      throw new Error("Configuration not initialized");
     }
   });
 
   describe("admin_deposit", () => {
     it("should allow admin to deposit tokens to the SOL vault", async () => {
+      // Get the current pool state to ensure we're using the correct values
+      const poolStateAccount = await program.account.poolState.fetch(poolState);
+
       // Get balances before admin deposit
       const solVaultBefore = await getAccount(
         provider.connection,
-        solVault.address
+        poolStateAccount.solVault
       );
-      const poolStateBefore = await program.account.poolState.fetch(poolState);
       const adminSolBefore = await getAccount(
         provider.connection,
         adminSolAccount
       );
 
-      // FIXME: First need to wrap SOL into WSOL in the admin account
-
-      console.log("Admin Sol balance before deposit:", adminSolBefore.amount);
+      console.log(
+        "Admin Sol balance before deposit:",
+        adminSolBefore.amount.toString()
+      );
 
       // Admin deposit to SOL vault
       const depositAmount = new BN(1_000_000_000); // 1 SOL
@@ -338,10 +489,11 @@ describe("perp-amm (initialization in progress)", () => {
           admin: admin.publicKey,
           poolState,
           adminTokenAccount: adminSolAccount,
-          vaultAccount: solVault.address,
-          chainlinkProgram: mockChainlinkProgram,
+          vaultAccount: poolStateAccount.solVault,
+          chainlinkProgram: chainlinkMockProgram.programId,
           chainlinkFeed: mockChainlinkFeed,
           tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([admin])
         .rpc();
@@ -349,7 +501,7 @@ describe("perp-amm (initialization in progress)", () => {
       // Get balances after admin deposit
       const solVaultAfter = await getAccount(
         provider.connection,
-        solVault.address
+        poolStateAccount.solVault
       );
       const poolStateAfter = await program.account.poolState.fetch(poolState);
       const adminSolAfter = await getAccount(
@@ -376,28 +528,33 @@ describe("perp-amm (initialization in progress)", () => {
 
       assert.equal(
         poolStateAfter.solDeposited.toString(),
-        poolStateBefore.solDeposited.add(depositAmount).toString(),
+        poolStateAccount.solDeposited.add(depositAmount).toString(),
         "Pool SOL deposited should increase by deposit amount"
       );
     });
 
     it("should allow admin to deposit USDC", async () => {
+      // Get the current pool state to ensure we're using the correct values
+      const poolStateAccount = await program.account.poolState.fetch(poolState);
+
       // Get balances before admin deposit
       const usdcVaultBefore = await getAccount(
         provider.connection,
-        usdcVault.address
+        poolStateAccount.usdcVault
       );
-      const poolStateBefore = await program.account.poolState.fetch(poolState);
       const adminUsdcBefore = await getAccount(
         provider.connection,
         adminUsdcAccount
       );
 
       console.log(
-        "Pool state USDC account: ",
-        poolStateBefore.usdcVault.toString()
+        "Admin USDC balance before deposit:",
+        adminUsdcBefore.amount.toString()
       );
-      console.log("Passed in USDC vault: ", usdcVault.address.toString());
+      console.log(
+        "USDC vault before deposit:",
+        usdcVaultBefore.amount.toString()
+      );
 
       const depositAmount = new BN(100_000_000); // 100 USDC
 
@@ -408,10 +565,11 @@ describe("perp-amm (initialization in progress)", () => {
           admin: admin.publicKey,
           poolState,
           adminTokenAccount: adminUsdcAccount,
-          vaultAccount: usdcVault.address,
-          chainlinkProgram: mockChainlinkProgram,
+          vaultAccount: poolStateAccount.usdcVault,
+          chainlinkProgram: chainlinkMockProgram.programId,
           chainlinkFeed: mockChainlinkFeed,
           tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([admin])
         .rpc();
@@ -419,7 +577,7 @@ describe("perp-amm (initialization in progress)", () => {
       // Get balances after admin deposit
       const usdcVaultAfter = await getAccount(
         provider.connection,
-        usdcVault.address
+        poolStateAccount.usdcVault
       );
       const poolStateAfter = await program.account.poolState.fetch(poolState);
       const adminUsdcAfter = await getAccount(
@@ -446,12 +604,15 @@ describe("perp-amm (initialization in progress)", () => {
 
       assert.equal(
         poolStateAfter.usdcDeposited.toString(),
-        poolStateBefore.usdcDeposited.add(depositAmount).toString(),
+        poolStateAccount.usdcDeposited.add(depositAmount).toString(),
         "Pool USDC deposited should increase by deposit amount"
       );
     });
 
     it("should fail if non-admin tries to deposit", async () => {
+      // Get the current pool state to ensure we're using the correct values
+      const poolStateAccount = await program.account.poolState.fetch(poolState);
+
       try {
         // Create a token account for user1 to hold SOL tokens
         const user1SolAccount = await getOrCreateAssociatedTokenAccount(
@@ -478,10 +639,11 @@ describe("perp-amm (initialization in progress)", () => {
             admin: user1.publicKey,
             poolState,
             adminTokenAccount: user1SolAccount.address,
-            vaultAccount: solVault.address,
-            chainlinkProgram: mockChainlinkProgram,
+            vaultAccount: poolStateAccount.solVault,
+            chainlinkProgram: chainlinkMockProgram.programId,
             chainlinkFeed: mockChainlinkFeed,
             tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
           })
           .signers([user1])
           .rpc();

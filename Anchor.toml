@@ -8,6 +8,7 @@ skip-lint = false
 [programs.localnet]
 perp_amm = "brriXKXk4fveoRhSSVPdxJPjNoSEEjRyR7i5mGbFD1D"
 perp_margin_accounts = "brrFTzk9JScspG4H1sqthrQHnJoBBg9BA8v31Bn8V3R"
+chainlink_mock = "H2C4RzQ7FfKF2W8MKigHorSx3enRiVzaWWLXKDfJQjt9"
 
 [registry]
 url = "https://api.apr.dev"

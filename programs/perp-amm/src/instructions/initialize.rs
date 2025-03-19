@@ -45,6 +45,12 @@ pub struct Initialize<'info> {
     )]
     pub lp_token_mint: Account<'info, Mint>,
 
+    /// CHECK: Chainlink Program ID
+    pub chainlink_program_id: AccountInfo<'info>,
+
+    /// CHECK: Chainlink Price Feed Address
+    pub chainlink_price_feed: AccountInfo<'info>,
+
     #[account(address = anchor_spl::token::ID)]
     pub token_program: Program<'info, Token>,
 
@@ -68,6 +74,8 @@ pub fn handle_initialize(ctx: Context<Initialize>) -> Result<()> {
     pool_state.usdc_reward_vault = ctx.accounts.usdc_reward_vault.key();
     pool_state.accumulated_sol_fees = 0;
     pool_state.accumulated_usdc_fees = 0;
+    pool_state.chainlink_program_id = ctx.accounts.chainlink_program_id.key();
+    pool_state.chainlink_price_feed = ctx.accounts.chainlink_price_feed.key();
 
     Ok(())
 }

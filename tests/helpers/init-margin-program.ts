@@ -2,10 +2,7 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { PerpMarginAccounts } from "../../target/types/perp_margin_accounts";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
-import {
-  getOrCreateAssociatedTokenAccount,
-  TOKEN_PROGRAM_ID,
-} from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
 const WITHDRAWAL_TIMELOCK = 5 * 60; // 5 minutes in seconds
 
@@ -26,13 +23,15 @@ export async function initializeMarginProgram(
   );
 
   console.log("Margin Vault PDA:", marginVault.toString());
-  
+
   // Check if margin vault already exists
   const marginVaultInfo = await provider.connection.getAccountInfo(marginVault);
-  
+
   // If margin vault already exists, we don't need to initialize again
   if (marginVaultInfo) {
-    console.log("✓ Margin program already initialized, skipping initialization");
+    console.log(
+      "✓ Margin program already initialized, skipping initialization"
+    );
     return {
       marginVault,
       solVault,

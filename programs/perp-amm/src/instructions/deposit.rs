@@ -1,7 +1,4 @@
-use crate::{
-    errors::VaultError, instructions::update_rewards::*, state::*, CHAINLINK_PROGRAM_ID,
-    DEVNET_SOL_PRICE_FEED, MAINNET_SOL_PRICE_FEED, NATIVE_MINT,
-};
+use crate::{errors::VaultError, instructions::update_rewards::*, state::*, NATIVE_MINT};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, MintTo, Token, TokenAccount, Transfer};
 use chainlink_solana as chainlink;
@@ -37,11 +34,11 @@ pub struct Deposit<'info> {
     pub user_lp_token_account: Account<'info, TokenAccount>,
 
     /// CHECK: Validated in constraint
-    #[account(address = CHAINLINK_PROGRAM_ID.parse::<Pubkey>().unwrap())]
+    #[account(address = pool_state.chainlink_program_id)]
     pub chainlink_program: AccountInfo<'info>,
 
     /// CHECK: Validated in constraint
-    #[account(address = if cfg!(feature = "devnet") { DEVNET_SOL_PRICE_FEED } else { MAINNET_SOL_PRICE_FEED }.parse::<Pubkey>().unwrap())]
+    #[account(address = pool_state.chainlink_price_feed)]
     pub chainlink_feed: AccountInfo<'info>,
 
     pub token_program: Program<'info, Token>,
@@ -90,7 +87,7 @@ pub fn handle_deposit(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
     // 5. Transfer tokens from user to vault
     // Check if this is a SOL vault (WSOL)
     let is_sol_vault = ctx.accounts.vault_account.mint == NATIVE_MINT.parse::<Pubkey>().unwrap();
-    
+
     if is_sol_vault {
         // Handle direct SOL transfer and wrapping
         let ix = anchor_lang::solana_program::system_instruction::transfer(
@@ -128,7 +125,7 @@ pub fn handle_deposit(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
             .user_token_account
             .as_ref()
             .ok_or(error!(VaultError::TokenAccountNotProvided))?;
-            
+
         token::transfer(
             CpiContext::new(
                 ctx.accounts.token_program.to_account_info(),
