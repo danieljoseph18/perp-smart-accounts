@@ -17,6 +17,7 @@ import BN from "bn.js";
 import * as dotenv from "dotenv";
 import { PerpMarginAccounts } from "../target/types/perp_margin_accounts";
 import { setupAmmProgram } from "./helpers/init-amm-program";
+import { wrapSol } from "./helpers/wrap-sol";
 
 dotenv.config();
 
@@ -183,6 +184,15 @@ describe("perp-amm (with configuration persistence)", () => {
       if (poolStateBefore.accumulatedSolFees.eqn(0)) {
         // Admin deposit SOL to vault
         const depositAmount = new BN(LAMPORTS_PER_SOL);
+
+        await wrapSol(
+          admin.publicKey,
+          adminSolAccount,
+          depositAmount.toNumber(),
+          provider,
+          admin
+        );
+
         await program.methods
           .adminDeposit(depositAmount)
           .accountsStrict({
@@ -210,14 +220,14 @@ describe("perp-amm (with configuration persistence)", () => {
 
         // Add some SOL to user1's account
         const wrapAmount = 2 * LAMPORTS_PER_SOL; // 2 SOL
-        const wrapIx = SystemProgram.transfer({
-          fromPubkey: admin.publicKey,
-          toPubkey: user1SolAccount,
-          lamports: wrapAmount,
-        });
 
-        const wrapTx = new anchor.web3.Transaction().add(wrapIx);
-        await provider.sendAndConfirm(wrapTx, [admin]);
+        await wrapSol(
+          admin.publicKey,
+          user1SolAccount,
+          wrapAmount,
+          provider,
+          admin
+        );
 
         // User deposit SOL
         await program.methods

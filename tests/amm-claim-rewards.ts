@@ -17,6 +17,7 @@ import BN from "bn.js";
 import * as dotenv from "dotenv";
 import { PerpMarginAccounts } from "../target/types/perp_margin_accounts";
 import { setupAmmProgram } from "./helpers/init-amm-program";
+import { wrapSol } from "./helpers/wrap-sol";
 
 dotenv.config();
 
@@ -176,6 +177,14 @@ describe("perp-amm (with configuration persistence)", () => {
             user1.publicKey
           )
         ).address;
+
+        await wrapSol(
+          admin.publicKey,
+          user1SolAccount,
+          LAMPORTS_PER_SOL,
+          provider,
+          admin
+        );
 
         // User1 deposit SOL to earn rewards
         await program.methods

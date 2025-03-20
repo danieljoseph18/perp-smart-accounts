@@ -19,6 +19,7 @@ import BN from "bn.js";
 import * as dotenv from "dotenv";
 import { PerpMarginAccounts } from "../target/types/perp_margin_accounts";
 import { setupAmmProgram } from "./helpers/init-amm-program";
+import { wrapSol } from "./helpers/wrap-sol";
 
 dotenv.config();
 
@@ -95,6 +96,8 @@ describe("perp-amm (with configuration persistence)", () => {
       user2
     );
 
+    console.log("Setup complete, retrieving configuration values...");
+
     // Retrieve configuration values from the setup helper.
     poolState = setup.poolState;
     solMint = setup.solMint;
@@ -160,28 +163,27 @@ describe("perp-amm (with configuration persistence)", () => {
       ).address;
 
       console.log("Created WSOL ata: ", user1SolAccount);
-      
-      // Fund user1's WSOL account with tokens from admin
-      await transfer(
-        provider.connection,
-        admin,
-        adminSolAccount,
-        user1SolAccount,
-        admin.publicKey,
-        initialSolDeposit.toNumber()
-      );
 
-      // Get balance before deposit
       const solVaultBefore = await getAccount(provider.connection, solVault);
       const lpTokenSupplyBefore = (
         await getMint(provider.connection, lpTokenMint)
       ).supply;
+
+      console.log("Got lp mint and relevant accounts, trying to deposit... ");
+
+      await wrapSol(
+        user1.publicKey,
+        user1SolAccount,
+        initialSolDeposit.toNumber(),
+        provider,
+        user1
+      );
+
+      // Get user's SOL balance after wrapping but before deposit
       const user1SolBefore = await getAccount(
         provider.connection,
         user1SolAccount
       );
-
-      console.log("Got lp mint and relevant accounts, trying to deposit... ");
 
       // Deposit WSOL
       await program.methods
