@@ -1,513 +1,405 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { PerpMarginAccounts } from "../target/types/perp_margin_accounts";
+import { PerpAmm } from "../target/types/perp_amm";
 import {
   PublicKey,
   SystemProgram,
-  SYSVAR_RENT_PUBKEY,
   Keypair,
-  Connection,
+  LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
-  NATIVE_MINT,
   getOrCreateAssociatedTokenAccount,
-  createMint,
+  getAccount,
   mintTo,
 } from "@solana/spl-token";
-import { expect } from "chai";
+import { assert } from "chai";
+import BN from "bn.js";
+import * as dotenv from "dotenv";
+import { initializeMarginProgram } from "./helpers/init-margin-program";
+import { setupAmmProgram } from "./helpers/init-amm-program";
 
-// Mock the PerpAmm instruction processors
-class MockPerpAmmProgram {
-  connection: Connection;
-  payer: Keypair;
-  programId: PublicKey;
-  poolState: PublicKey;
-  solUsdPrice: number = 100_00000000; // $100 with 8 decimals
+dotenv.config();
 
-  constructor(
-    connection: Connection,
-    payer: Keypair,
-    programId: PublicKey,
-    poolState: PublicKey
-  ) {
-    this.connection = connection;
-    this.payer = payer;
-    this.programId = programId;
-    this.poolState = poolState;
-  }
+// These are the chainlink-related addresses used by the margin program.
+const CHAINLINK_PROGRAM = new PublicKey(
+  "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny"
+);
+const CHAINLINK_FEED = new PublicKey(
+  "99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR"
+);
 
-  // Mock the admin_withdraw CPI call
-  async adminWithdraw(amount: anchor.BN): Promise<string> {
-    console.log(
-      `Mocked PerpAmm admin_withdraw called for ${amount.toString()} tokens`
-    );
-    // Real implementation would perform state changes
-    // For testing, we'll just return a mock transaction ID
-    return "mocked-admin-withdraw-tx";
-  }
-
-  // Mock the admin_deposit CPI call
-  async adminDeposit(amount: anchor.BN): Promise<string> {
-    console.log(
-      `Mocked PerpAmm admin_deposit called for ${amount.toString()} tokens`
-    );
-    // Real implementation would perform state changes
-    // For testing, we'll just return a mock transaction ID
-    return "mocked-admin-deposit-tx";
-  }
-
-  // Create a mock pool state with the necessary fields
-  async createMockPoolState(
-    solVault: PublicKey,
-    usdcVault: PublicKey
-  ): Promise<void> {
-    console.log("Creating mock pool state for testing");
-    // In a real implementation, we'd initialize the account data
-    // For testing purposes, we'll inject state directly via the provider.connection
-
-    // Mock the pool state data with required fields
-    const poolStateData = {
-      isInitialized: true,
-      solVault: solVault,
-      usdcVault: usdcVault,
-      solUsdPrice: this.solUsdPrice,
-    };
-
-    console.log(
-      "Mock pool state created with SOL price:",
-      this.solUsdPrice / 100000000
-    );
-  }
-}
-
-describe("perp-margin-accounts liquidate", () => {
-  // Configure the client
+describe("perp-margin-accounts", () => {
+  // Use separate program clients for the AMM and the margin program.
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
-  const program = anchor.workspace
+  const ammProgram = anchor.workspace.PerpAmm as Program<PerpAmm>;
+  const marginProgram = anchor.workspace
     .PerpMarginAccounts as Program<PerpMarginAccounts>;
 
-  // Mock perp-amm program for testing purposes
-  let mockPerpAmmProgramId: PublicKey;
-  let mockPerpAmmService: MockPerpAmmProgram;
+  // Use fixed keypairs for admin and a liquidator (unauthorized)
+  const admin = Keypair.fromSeed(Uint8Array.from(Array(32).fill(1)));
+  const user1 = Keypair.generate();
+  const user2 = Keypair.generate();
+  const liquidator = Keypair.generate();
+
+  // AMM configuration (pool state, vaults, mints, etc.)
   let poolStatePda: PublicKey;
+  let ammSolVault: PublicKey;
+  let ammUsdcVault: PublicKey;
 
-  // For testing we need:
-  let usdcMint: PublicKey;
-  let solMint: PublicKey;
+  // Margin program vault information (returned from initializeMarginProgram)
   let marginVault: PublicKey;
-  let solVaultAccount: PublicKey;
-  let usdcVaultAccount: PublicKey;
+  let marginSolVault: PublicKey;
+  let marginUsdcVault: PublicKey;
 
-  // User accounts
-  let userSolAccount: PublicKey;
-  let userUsdcAccount: PublicKey;
-  let userMarginAccount: PublicKey;
+  // Token mints
+  let solMint: PublicKey;
+  let usdcMint: PublicKey;
+  let lpTokenMint: PublicKey;
 
-  // Test amounts
-  const withdrawalTimelock = 10; // 10 seconds for testing
-  const solDepositAmount = new anchor.BN(5_000_000_000); // 5 SOL
-  const usdcDepositAmount = new anchor.BN(5_000_000); // 5 USDC
+  // User token accounts (for receiving tokens and paying fees)
+  let adminSolAccount: PublicKey;
+  let adminUsdcAccount: PublicKey;
+  let user1UsdcAccount: PublicKey;
+  let user2UsdcAccount: PublicKey;
+  let user1SolAccount: PublicKey;
+  let user2SolAccount: PublicKey;
 
-  // Mock chainlink data for testing
-  let mockChainlinkProgram: PublicKey;
-  let mockChainlinkFeed: PublicKey;
+  // User margin accounts (PDAs derived with ["margin_account", user.publicKey])
+  let user1MarginAccount: PublicKey;
+  let user2MarginAccount: PublicKey;
 
-  // Mock pool accounts
-  let poolSolVault: PublicKey;
-  let poolUsdcVault: PublicKey;
+  // Test deposit amounts
+  const initialSolDeposit = new BN(2 * LAMPORTS_PER_SOL);
+  const initialUsdcDeposit = new BN(10_000_000); // 10 USDC with 6 decimals
 
   before(async () => {
-    console.log("Program ID:", program.programId.toString());
+    console.log("=== Starting test setup ===");
 
-    // Setup mock Chainlink program and feed
-    // Note: The program can now accept these addresses during initialization
-    // instead of using hardcoded addresses, which makes testing much easier
-    mockChainlinkProgram = Keypair.generate().publicKey;
-    mockChainlinkFeed = Keypair.generate().publicKey;
-
-    // Create mock PerpAmm program id (we don't need the keypair)
-    mockPerpAmmProgramId = Keypair.generate().publicKey;
-    console.log("Mock PerpAmm program ID:", mockPerpAmmProgramId.toString());
-
-    // Create mock USDC mint
-    usdcMint = await createMint(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      provider.wallet.publicKey,
-      provider.wallet.publicKey,
-      6
-    );
-    console.log("Created USDC mint:", usdcMint.toString());
-
-    // Use native SOL mint for SOL
-    solMint = NATIVE_MINT;
-    console.log("Using SOL mint:", solMint.toString());
-
-    // Derive the margin vault PDA
-    [marginVault] = PublicKey.findProgramAddressSync(
-      [Buffer.from("margin_vault")],
-      program.programId
-    );
-    console.log("Margin vault PDA:", marginVault.toString());
-
-    // Create mock pool state
-    [poolStatePda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("pool_state")],
-      mockPerpAmmProgramId
-    );
-    console.log("Pool state PDA:", poolStatePda.toString());
-
-    // Create mock pool vaults
-    const poolSolVaultInfo = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      solMint,
-      provider.wallet.publicKey
-    );
-    poolSolVault = poolSolVaultInfo.address;
-    console.log("Pool SOL vault:", poolSolVault.toString());
-
-    const poolUsdcVaultInfo = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      usdcMint,
-      provider.wallet.publicKey
-    );
-    poolUsdcVault = poolUsdcVaultInfo.address;
-    console.log("Pool USDC vault:", poolUsdcVault.toString());
-
-    // Initialize the mock perp-amm service
-    mockPerpAmmService = new MockPerpAmmProgram(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      mockPerpAmmProgramId,
-      poolStatePda
+    // Set up the AMM program. This helper creates the pool state, mints, vaults and
+    // associated user token accounts.
+    const ammSetup = await setupAmmProgram(
+      provider,
+      ammProgram,
+      marginProgram, // passed in case the AMM setup also needs the margin program
+      CHAINLINK_PROGRAM,
+      CHAINLINK_FEED,
+      admin,
+      user1,
+      user2
     );
 
-    // Create the mock pool state
-    await mockPerpAmmService.createMockPoolState(poolSolVault, poolUsdcVault);
+    // The AMM setup returns the pool state PDA as well as the vaults and mint addresses.
+    poolStatePda = ammSetup.poolState;
+    solMint = ammSetup.solMint;
+    usdcMint = ammSetup.usdcMint;
+    lpTokenMint = ammSetup.lpTokenMint;
+    ammSolVault = ammSetup.solVault;
+    ammUsdcVault = ammSetup.usdcVault;
+    adminSolAccount = ammSetup.adminSolAccount;
+    adminUsdcAccount = ammSetup.adminUsdcAccount;
+    user1UsdcAccount = ammSetup.user1UsdcAccount;
+    user2UsdcAccount = ammSetup.user2UsdcAccount;
 
-    // Create user token accounts
-    const userSolAccountInfo = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      solMint,
-      provider.wallet.publicKey
-    );
-    userSolAccount = userSolAccountInfo.address;
-    console.log("User SOL account:", userSolAccount.toString());
-
-    const userUsdcAccountInfo = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      usdcMint,
-      provider.wallet.publicKey
-    );
-    userUsdcAccount = userUsdcAccountInfo.address;
-    console.log("User USDC account:", userUsdcAccount.toString());
-
-    // Fund user USDC account
-    await mintTo(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      usdcMint,
-      userUsdcAccount,
-      provider.wallet.publicKey,
-      10_000_000 // 10 USDC
-    );
-    console.log("Funded user USDC account with 10 USDC");
-
-    // Create vault token accounts
-    const solVault = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      solMint,
-      marginVault,
-      true
-    );
-    solVaultAccount = solVault.address;
-    console.log("Created SOL vault:", solVaultAccount.toString());
-
-    const usdcVault = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      usdcMint,
-      marginVault,
-      true
-    );
-    usdcVaultAccount = usdcVault.address;
-    console.log("Created USDC vault:", usdcVaultAccount.toString());
-
-    // Initialize the margin vault with mock Chainlink addresses
-    await program.methods
-      .initialize(
-        new anchor.BN(withdrawalTimelock),
-        mockChainlinkProgram,
-        mockChainlinkFeed
+    // Create associated token accounts for SOL (wrapped SOL) for our users.
+    user1SolAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        admin,
+        solMint,
+        user1.publicKey
       )
-      .accountsStrict({
-        authority: provider.wallet.publicKey,
-        marginVault: marginVault,
-        solVault: solVaultAccount,
-        usdcVault: usdcVaultAccount,
-        systemProgram: SystemProgram.programId,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        rent: SYSVAR_RENT_PUBKEY,
-      })
-      .rpc();
-    console.log("Initialized margin vault");
+    ).address;
+    user2SolAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        admin,
+        solMint,
+        user2.publicKey
+      )
+    ).address;
 
-    // Derive the user's margin account PDA
-    [userMarginAccount] = PublicKey.findProgramAddressSync(
-      [Buffer.from("margin_account"), provider.wallet.publicKey.toBuffer()],
-      program.programId
+    marginVault = PublicKey.findProgramAddressSync(
+      [Buffer.from("margin_vault")],
+      marginProgram.programId
+    )[0];
+
+    marginSolVault = ammSetup.solVault;
+    marginUsdcVault = ammSetup.usdcVault;
+
+    // Derive the margin account PDAs for user1 and user2.
+    [user1MarginAccount] = PublicKey.findProgramAddressSync(
+      [Buffer.from("margin_account"), user1.publicKey.toBuffer()],
+      marginProgram.programId
     );
-    console.log("User margin account PDA:", userMarginAccount.toString());
+    [user2MarginAccount] = PublicKey.findProgramAddressSync(
+      [Buffer.from("margin_account"), user2.publicKey.toBuffer()],
+      marginProgram.programId
+    );
 
-    // Deposit funds to the margin account
-    // Deposit SOL
-    await program.methods
-      .depositMargin(solDepositAmount)
-      .accountsStrict({
-        marginAccount: userMarginAccount,
-        marginVault: marginVault,
-        vaultTokenAccount: solVaultAccount,
-        userTokenAccount: userSolAccount,
-        owner: provider.wallet.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      })
-      .rpc();
-    console.log("Deposited SOL to margin account");
-
-    // Deposit USDC
-    await program.methods
-      .depositMargin(usdcDepositAmount)
-      .accountsStrict({
-        marginAccount: userMarginAccount,
-        marginVault: marginVault,
-        vaultTokenAccount: usdcVaultAccount,
-        userTokenAccount: userUsdcAccount,
-        owner: provider.wallet.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      })
-      .rpc();
-    console.log("Deposited USDC to margin account");
+    // Ensure admin, users, and liquidator have sufficient SOL for fees.
+    await Promise.all([
+      ensureMinimumBalance(admin.publicKey, 5 * LAMPORTS_PER_SOL),
+      ensureMinimumBalance(user1.publicKey, 5 * LAMPORTS_PER_SOL),
+      ensureMinimumBalance(user2.publicKey, 5 * LAMPORTS_PER_SOL),
+      ensureMinimumBalance(liquidator.publicKey, 5 * LAMPORTS_PER_SOL),
+    ]);
   });
 
-  it("Should liquidate a margin account's SOL balance", async () => {
-    // Get initial SOL balance from margin account
-    const initialMarginAccount = await program.account.marginAccount.fetch(
-      userMarginAccount
-    );
-    const initialSolBalance = initialMarginAccount.solBalance;
-
-    expect(initialSolBalance.toString()).to.equal(solDepositAmount.toString());
-
-    // Simulate the admin deposit from liquidation
-    console.log("Mocking PerpAmm admin_deposit call for liquidation...");
-    await mockPerpAmmService.adminDeposit(initialSolBalance);
-
-    // Try to liquidate the SOL balance
-    try {
-      await program.methods
-        .liquidateMarginAccount()
-        .accountsStrict({
-          marginAccount: userMarginAccount,
-          marginVault: marginVault,
-          marginVaultTokenAccount: solVaultAccount,
-          poolState: poolStatePda,
-          poolVaultAccount: poolSolVault,
-          chainlinkProgram: mockChainlinkProgram,
-          chainlinkFeed: mockChainlinkFeed,
-          authority: provider.wallet.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          liquidityPoolProgram: mockPerpAmmProgramId,
-        })
-        .rpc();
-    } catch (error: any) {
-      // The instruction will fail because we've mocked the program ID
-      // but we haven't mocked the actual program implementation
-      console.log("Expected instruction error:", error.message);
-      console.log("This is fine for testing - we'll simulate the outcome");
+  // Helper: airdrop SOL if needed
+  async function ensureMinimumBalance(address: PublicKey, minBalance: number) {
+    const balance = await provider.connection.getBalance(address);
+    if (balance < minBalance) {
+      console.log(`Airdropping SOL to ${address.toString()}...`);
+      const airdropTx = await provider.connection.requestAirdrop(
+        address,
+        minBalance - balance
+      );
+      await provider.connection.confirmTransaction(airdropTx);
     }
+  }
 
-    // Manually update the margin account to simulate a successful liquidation
-    // This would normally be done by the program, but for testing we do it directly
-    // Create a new account with the liquidated balance using another deposit
-    await program.methods
-      .depositMargin(new anchor.BN(0))
-      .accountsStrict({
-        marginAccount: userMarginAccount,
-        marginVault: marginVault,
-        vaultTokenAccount: solVaultAccount,
-        userTokenAccount: userSolAccount,
-        owner: provider.wallet.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      })
-      .rpc();
-
-    // Verify margin account SOL balance is now zero
-    const finalMarginAccount = await program.account.marginAccount.fetch(
-      userMarginAccount
-    );
-    expect(finalMarginAccount.solBalance.toString()).to.equal("0");
-
-    // USDC balance should remain unchanged
-    expect(finalMarginAccount.usdcBalance.toString()).to.equal(
-      usdcDepositAmount.toString()
-    );
-
-    console.log(
-      "Liquidation test completed. SOL balance should be 0, USDC unchanged."
-    );
-  });
-
-  it("Should liquidate a margin account's USDC balance", async () => {
-    // Get initial USDC balance from margin account
-    const initialMarginAccount = await program.account.marginAccount.fetch(
-      userMarginAccount
-    );
-    const initialUsdcBalance = initialMarginAccount.usdcBalance;
-
-    expect(initialUsdcBalance.toString()).to.equal(
-      usdcDepositAmount.toString()
-    );
-
-    // Simulate the admin deposit from liquidation
-    console.log("Mocking PerpAmm admin_deposit call for USDC liquidation...");
-    await mockPerpAmmService.adminDeposit(initialUsdcBalance);
-
-    // Try to liquidate the USDC balance
-    try {
-      await program.methods
-        .liquidateMarginAccount()
+  describe("liquidate_margin_account", () => {
+    it("should liquidate a margin account's SOL balance", async () => {
+      // First, deposit SOL into user1's margin account.
+      await marginProgram.methods
+        .depositMargin(initialSolDeposit)
         .accountsStrict({
-          marginAccount: userMarginAccount,
+          marginAccount: user1MarginAccount,
           marginVault: marginVault,
-          marginVaultTokenAccount: usdcVaultAccount,
-          poolState: poolStatePda,
-          poolVaultAccount: poolUsdcVault,
-          chainlinkProgram: mockChainlinkProgram,
-          chainlinkFeed: mockChainlinkFeed,
-          authority: provider.wallet.publicKey,
+          vaultTokenAccount: marginSolVault,
+          userTokenAccount: user1SolAccount,
+          owner: user1.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
-          liquidityPoolProgram: mockPerpAmmProgramId,
+          systemProgram: SystemProgram.programId,
         })
-        .rpc();
-    } catch (error: any) {
-      // The instruction will fail because we've mocked the program ID
-      // but we haven't mocked the actual program implementation
-      console.log("Expected instruction error:", error.message);
-      console.log("This is fine for testing - we'll simulate the outcome");
-    }
-
-    // Manually update the margin account to simulate a successful liquidation
-    // This would normally be done by the program, but for testing we do it directly
-    // Create a new account with the liquidated balance using another deposit
-    await program.methods
-      .depositMargin(new anchor.BN(0))
-      .accountsStrict({
-        marginAccount: userMarginAccount,
-        marginVault: marginVault,
-        vaultTokenAccount: usdcVaultAccount,
-        userTokenAccount: userUsdcAccount,
-        owner: provider.wallet.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      })
-      .rpc();
-
-    // Verify margin account USDC balance is now zero
-    const finalMarginAccount = await program.account.marginAccount.fetch(
-      userMarginAccount
-    );
-    expect(finalMarginAccount.usdcBalance.toString()).to.equal("0");
-
-    console.log("USDC Liquidation test completed. USDC balance should be 0.");
-  });
-
-  it("Should fail to liquidate with an unauthorized authority", async () => {
-    // Create a new user
-    const unauthorizedUser = Keypair.generate();
-
-    // Fund the unauthorized user
-    const signature = await provider.connection.requestAirdrop(
-      unauthorizedUser.publicKey,
-      anchor.web3.LAMPORTS_PER_SOL
-    );
-    await provider.connection.confirmTransaction(signature);
-
-    try {
-      // Try to liquidate with an unauthorized user
-      await program.methods
-        .liquidateMarginAccount()
-        .accountsStrict({
-          marginAccount: userMarginAccount,
-          marginVault: marginVault,
-          marginVaultTokenAccount: solVaultAccount,
-          poolState: poolStatePda,
-          poolVaultAccount: poolSolVault,
-          chainlinkProgram: mockChainlinkProgram,
-          chainlinkFeed: mockChainlinkFeed,
-          authority: unauthorizedUser.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          liquidityPoolProgram: mockPerpAmmProgramId,
-        })
-        .signers([unauthorizedUser])
+        .signers([user1])
         .rpc();
 
-      expect.fail("Should have thrown an authority error");
-    } catch (error: any) {
-      // Since we're using mock programs, we'll accept any error
-      // In a real scenario, this would be a specific error from the program
-      console.log("Received expected error:", error.message);
-      expect(error).to.exist;
-    }
-  });
+      // Fetch margin account state before liquidation.
+      const marginAccountBefore =
+        await marginProgram.account.marginAccount.fetch(user1MarginAccount);
+      const depositedSol = marginAccountBefore.solBalance;
+      assert.equal(
+        depositedSol.toString(),
+        initialSolDeposit.toString(),
+        "Initial SOL balance should match deposit amount"
+      );
 
-  it("Should allow liquidation when account balance is already zero", async () => {
-    // SOL balance should already be zero from previous test
-    const initialMarginAccount = await program.account.marginAccount.fetch(
-      userMarginAccount
-    );
-    expect(initialMarginAccount.solBalance.toString()).to.equal("0");
+      // Capture the pool SOL vault balance before liquidation.
+      const poolSolBefore = await getAccount(provider.connection, ammSolVault);
+      const poolSolAmountBefore = new BN(poolSolBefore.amount.toString());
 
-    // Try to liquidate a zero balance - should still work but be a no-op
-    try {
-      await program.methods
+      // Call the liquidation instruction.
+      await marginProgram.methods
         .liquidateMarginAccount()
         .accountsStrict({
-          marginAccount: userMarginAccount,
+          marginAccount: user1MarginAccount,
           marginVault: marginVault,
-          marginVaultTokenAccount: solVaultAccount,
+          marginVaultTokenAccount: marginSolVault,
           poolState: poolStatePda,
-          poolVaultAccount: poolSolVault,
-          chainlinkProgram: mockChainlinkProgram,
-          chainlinkFeed: mockChainlinkFeed,
-          authority: provider.wallet.publicKey,
+          poolVaultAccount: ammSolVault,
+          chainlinkProgram: CHAINLINK_PROGRAM,
+          chainlinkFeed: CHAINLINK_FEED,
+          authority: admin.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
-          liquidityPoolProgram: mockPerpAmmProgramId,
+          liquidityPoolProgram: ammProgram.programId,
+          systemProgram: SystemProgram.programId,
         })
+        .signers([admin])
         .rpc();
-    } catch (error: any) {
-      // The instruction will fail because we've mocked the program ID
-      // but we haven't mocked the actual program implementation
-      console.log("Expected instruction error:", error.message);
-      console.log("This is fine for testing - SOL balance is already 0");
-    }
 
-    // Balance should still be zero
-    const finalMarginAccount = await program.account.marginAccount.fetch(
-      userMarginAccount
-    );
-    expect(finalMarginAccount.solBalance.toString()).to.equal("0");
+      console.log("Liquidation transaction for SOL completed.");
 
-    console.log("Zero-balance liquidation test completed successfully");
+      // Fetch margin account state after liquidation.
+      const marginAccountAfter =
+        await marginProgram.account.marginAccount.fetch(user1MarginAccount);
+      assert.equal(
+        marginAccountAfter.solBalance.toString(),
+        "0",
+        "SOL balance should be zero after liquidation"
+      );
+
+      // Verify that the AMM pool vault increased by the deposited amount.
+      const poolSolAfter = await getAccount(provider.connection, ammSolVault);
+      const poolSolAmountAfter = new BN(poolSolAfter.amount.toString());
+      const diff = poolSolAmountAfter.sub(poolSolAmountBefore);
+      assert.equal(
+        diff.toString(),
+        initialSolDeposit.toString(),
+        "Pool SOL vault should increase by the liquidated amount"
+      );
+    });
+
+    it("should liquidate a margin account's USDC balance", async () => {
+      // Deposit USDC into user2's margin account.
+      await marginProgram.methods
+        .depositMargin(initialUsdcDeposit)
+        .accountsStrict({
+          marginAccount: user2MarginAccount,
+          marginVault: marginVault,
+          vaultTokenAccount: marginUsdcVault,
+          userTokenAccount: user2UsdcAccount,
+          owner: user2.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([user2])
+        .rpc();
+
+      // Fetch margin account state before liquidation.
+      const marginAccountBefore =
+        await marginProgram.account.marginAccount.fetch(user2MarginAccount);
+      const depositedUsdc = marginAccountBefore.usdcBalance;
+      assert.equal(
+        depositedUsdc.toString(),
+        initialUsdcDeposit.toString(),
+        "Initial USDC balance should match deposit amount"
+      );
+
+      // Capture the pool USDC vault balance before liquidation.
+      const poolUsdcBefore = await getAccount(
+        provider.connection,
+        ammUsdcVault
+      );
+      const poolUsdcAmountBefore = new BN(poolUsdcBefore.amount.toString());
+
+      // Call the liquidation instruction.
+      await marginProgram.methods
+        .liquidateMarginAccount()
+        .accountsStrict({
+          marginAccount: user2MarginAccount,
+          marginVault: marginVault,
+          marginVaultTokenAccount: marginUsdcVault,
+          poolState: poolStatePda,
+          poolVaultAccount: ammUsdcVault,
+          chainlinkProgram: CHAINLINK_PROGRAM,
+          chainlinkFeed: CHAINLINK_FEED,
+          authority: admin.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          liquidityPoolProgram: ammProgram.programId,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([admin])
+        .rpc();
+
+      console.log("Liquidation transaction for USDC completed.");
+
+      // Fetch margin account state after liquidation.
+      const marginAccountAfter =
+        await marginProgram.account.marginAccount.fetch(user2MarginAccount);
+      assert.equal(
+        marginAccountAfter.usdcBalance.toString(),
+        "0",
+        "USDC balance should be zero after liquidation"
+      );
+
+      // Verify that the AMM pool vault increased by the liquidated amount.
+      const poolUsdcAfter = await getAccount(provider.connection, ammUsdcVault);
+      const poolUsdcAmountAfter = new BN(poolUsdcAfter.amount.toString());
+      const diff = poolUsdcAmountAfter.sub(poolUsdcAmountBefore);
+      assert.equal(
+        diff.toString(),
+        initialUsdcDeposit.toString(),
+        "Pool USDC vault should increase by the liquidated amount"
+      );
+    });
+
+    it("should fail to liquidate with an unauthorized authority", async () => {
+      try {
+        // Attempt liquidation using an unauthorized authority.
+        await marginProgram.methods
+          .liquidateMarginAccount()
+          .accountsStrict({
+            marginAccount: user1MarginAccount,
+            marginVault: marginVault,
+            marginVaultTokenAccount: marginSolVault,
+            poolState: poolStatePda,
+            poolVaultAccount: ammSolVault,
+            chainlinkProgram: CHAINLINK_PROGRAM,
+            chainlinkFeed: CHAINLINK_FEED,
+            authority: liquidator.publicKey, // Unauthorized!
+            tokenProgram: TOKEN_PROGRAM_ID,
+            liquidityPoolProgram: ammProgram.programId,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([liquidator])
+          .rpc();
+
+        assert.fail("Expected transaction to fail with unauthorized authority");
+      } catch (error: any) {
+        assert.include(
+          error.toString(),
+          "UnauthorizedLiquidation",
+          "Expected error about unauthorized liquidation"
+        );
+      }
+    });
+
+    it("should test liquidation of zero balances (no-op)", async () => {
+      // Create a new user with a fresh margin account with zero balances.
+      const zeroBalanceUser = Keypair.generate();
+      await ensureMinimumBalance(
+        zeroBalanceUser.publicKey,
+        2 * LAMPORTS_PER_SOL
+      );
+
+      const [zeroMarginAccount] = PublicKey.findProgramAddressSync(
+        [Buffer.from("margin_account"), zeroBalanceUser.publicKey.toBuffer()],
+        marginProgram.programId
+      );
+
+      // Confirm that the initial balances are zero.
+      const initialAccount = await marginProgram.account.marginAccount.fetch(
+        zeroMarginAccount
+      );
+      assert.equal(
+        initialAccount.solBalance.toString(),
+        "0",
+        "Initial SOL balance should be zero"
+      );
+      assert.equal(
+        initialAccount.usdcBalance.toString(),
+        "0",
+        "Initial USDC balance should be zero"
+      );
+
+      // Attempt liquidation on the zero-balance margin account.
+      await marginProgram.methods
+        .liquidateMarginAccount()
+        .accountsStrict({
+          marginAccount: zeroMarginAccount,
+          marginVault: marginVault,
+          marginVaultTokenAccount: marginSolVault, // using the SOL vault as example
+          poolState: poolStatePda,
+          poolVaultAccount: ammSolVault,
+          chainlinkProgram: CHAINLINK_PROGRAM,
+          chainlinkFeed: CHAINLINK_FEED,
+          authority: admin.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          liquidityPoolProgram: ammProgram.programId,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([admin])
+        .rpc();
+
+      // Verify that the account's balances remain zero.
+      const finalAccount = await marginProgram.account.marginAccount.fetch(
+        zeroMarginAccount
+      );
+      assert.equal(
+        finalAccount.solBalance.toString(),
+        "0",
+        "Final SOL balance should still be zero"
+      );
+      assert.equal(
+        finalAccount.usdcBalance.toString(),
+        "0",
+        "Final USDC balance should still be zero"
+      );
+    });
   });
 });

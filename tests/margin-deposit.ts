@@ -4,376 +4,583 @@ import { PerpMarginAccounts } from "../target/types/perp_margin_accounts";
 import {
   PublicKey,
   SystemProgram,
-  SYSVAR_RENT_PUBKEY,
   Keypair,
+  LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
   NATIVE_MINT,
   getOrCreateAssociatedTokenAccount,
-  createMint,
-  mintTo,
   getAccount,
-  createSyncNativeInstruction,
+  mintTo,
 } from "@solana/spl-token";
-import { expect } from "chai";
+import { assert } from "chai";
+import BN from "bn.js";
+import * as dotenv from "dotenv";
+import { initializeMarginProgram } from "./helpers/init-margin-program";
+import { wrapSol } from "./helpers/wrap-sol";
 
-describe("perp-margin-accounts deposit", () => {
-  // Configure the client
+dotenv.config();
+
+// Get the deployed chainlink_mock program
+const chainlinkProgram = new PublicKey(
+  "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny"
+);
+
+// Devnet SOL/USD Price Feed
+const chainlinkFeed = new PublicKey(
+  "99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR"
+);
+
+describe("perp-margin-accounts", () => {
+  // Configure the client to use the local cluster
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
   const program = anchor.workspace
     .PerpMarginAccounts as Program<PerpMarginAccounts>;
 
-  // For testing we need:
+  // Use a fixed keypair for admin (for consistent testing)
+  const admin = Keypair.fromSeed(Uint8Array.from(Array(32).fill(1)));
+  const user1 = Keypair.generate();
+  const user2 = Keypair.generate();
+
+  // Set up token mints and vaults
   let usdcMint: PublicKey;
   let solMint: PublicKey;
   let marginVault: PublicKey;
-  let solVaultAccount: PublicKey;
-  let usdcVaultAccount: PublicKey;
+  let solVault: PublicKey;
+  let usdcVault: PublicKey;
 
-  // User accounts
-  let userSolAccount: PublicKey;
-  let userUsdcAccount: PublicKey;
-  let userMarginAccount: PublicKey;
+  // Set up token accounts
+  let adminSolAccount: PublicKey;
+  let adminUsdcAccount: PublicKey;
+  let user1SolAccount: PublicKey;
+  let user1UsdcAccount: PublicKey;
+  let user2SolAccount: PublicKey;
+  let user2UsdcAccount: PublicKey;
 
-  // Test amounts
-  const withdrawalTimelock = 24 * 60 * 60; // 24 hours in seconds
-  const solDepositAmount = new anchor.BN(1_000_000_000); // 1 SOL (in lamports)
-  const usdcDepositAmount = new anchor.BN(1_000_000); // 1 USDC (with 6 decimals)
+  // User margin accounts
+  let user1MarginAccount: PublicKey;
+  let user2MarginAccount: PublicKey;
+
+  // Test parameters
+  const solDepositAmount = new BN(LAMPORTS_PER_SOL); // 1 SOL
+  const usdcDepositAmount = new BN(10_000_000); // 10 USDC (with 6 decimals)
+
+  // Global configuration state
+  let configInitialized = false;
 
   before(async () => {
-    console.log("Program ID:", program.programId.toString());
+    console.log("=== Starting test setup ===");
 
-    // Create mock USDC mint
-    usdcMint = await createMint(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      provider.wallet.publicKey,
-      provider.wallet.publicKey,
-      6
+    // Set up the Margin program; this helper creates mints, vaults,
+    // marginVault, and admin token accounts.
+    const setup = await initializeMarginProgram(
+      provider,
+      program,
+      NATIVE_MINT, // Use WSOL
+      null, // Let the helper create the USDC mint
+      chainlinkProgram,
+      chainlinkFeed
     );
-    console.log("Created USDC mint:", usdcMint.toString());
 
-    // Use native SOL mint for SOL
+    // Retrieve configuration values from the setup helper.
+    marginVault = setup.marginVault;
     solMint = NATIVE_MINT;
-    console.log("Using SOL mint:", solMint.toString());
+    solVault = setup.solVault;
+    usdcVault = setup.usdcVault;
 
-    // Derive the margin vault PDA
-    [marginVault] = PublicKey.findProgramAddressSync(
-      [Buffer.from("margin_vault")],
-      program.programId
-    );
-    console.log("Margin vault PDA:", marginVault.toString());
+    // Create USDC mint since it's not returned by setup
+    usdcMint = (await getAccount(provider.connection, usdcVault)).mint;
 
-    // Create user token accounts
-    const userSolAccountInfo = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      solMint,
-      provider.wallet.publicKey
-    );
-    userSolAccount = userSolAccountInfo.address;
-    console.log("User SOL account:", userSolAccount.toString());
+    // Create token accounts for all users
+    adminSolAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        admin,
+        solMint,
+        admin.publicKey
+      )
+    ).address;
 
-    const userUsdcAccountInfo = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      usdcMint,
-      provider.wallet.publicKey
-    );
-    userUsdcAccount = userUsdcAccountInfo.address;
-    console.log("User USDC account:", userUsdcAccount.toString());
+    adminUsdcAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        admin,
+        usdcMint,
+        admin.publicKey
+      )
+    ).address;
 
-    // Fund user USDC account
+    user1SolAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        admin,
+        solMint,
+        user1.publicKey
+      )
+    ).address;
+
+    user1UsdcAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        admin,
+        usdcMint,
+        user1.publicKey
+      )
+    ).address;
+
+    user2SolAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        admin,
+        solMint,
+        user2.publicKey
+      )
+    ).address;
+
+    user2UsdcAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        admin,
+        usdcMint,
+        user2.publicKey
+      )
+    ).address;
+
+    // Mint USDC to user accounts
     await mintTo(
       provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
+      admin,
       usdcMint,
-      userUsdcAccount,
-      provider.wallet.publicKey,
-      10_000_000 // 10 USDC
+      user1UsdcAccount,
+      admin.publicKey,
+      100_000_000 // 100 USDC
     );
-    console.log("Funded user USDC account with 10 USDC");
 
-    // For wrapped SOL, we need to use the syncNative instruction
-    // First, transfer SOL to the associated token account address
-    const solToWrap = 5_000_000_000; // 5 SOL
+    await mintTo(
+      provider.connection,
+      admin,
+      usdcMint,
+      user2UsdcAccount,
+      admin.publicKey,
+      100_000_000 // 100 USDC
+    );
 
-    const wrapSolIx = anchor.web3.SystemProgram.transfer({
-      fromPubkey: provider.wallet.publicKey,
-      toPubkey: userSolAccount,
-      lamports: solToWrap,
+    // Wrap SOL for users
+    await wrapSol(
+      admin.publicKey,
+      user1SolAccount,
+      5 * LAMPORTS_PER_SOL,
+      provider,
+      admin
+    );
+
+    await wrapSol(
+      admin.publicKey,
+      user2SolAccount,
+      5 * LAMPORTS_PER_SOL,
+      provider,
+      admin
+    );
+
+    // Derive user margin accounts
+    [user1MarginAccount] = PublicKey.findProgramAddressSync(
+      [Buffer.from("margin_account"), user1.publicKey.toBuffer()],
+      program.programId
+    );
+
+    [user2MarginAccount] = PublicKey.findProgramAddressSync(
+      [Buffer.from("margin_account"), user2.publicKey.toBuffer()],
+      program.programId
+    );
+
+    configInitialized = true;
+  });
+
+  // Ensure configuration is initialized before each test.
+  beforeEach(async () => {
+    if (!configInitialized) {
+      throw new Error("Configuration not initialized");
+    }
+  });
+
+  describe("deposit_margin", () => {
+    it("should initialize and deposit SOL to a new margin account", async () => {
+      // Get initial balances
+      const solVaultBefore = await getAccount(provider.connection, solVault);
+      const user1SolBefore = await getAccount(
+        provider.connection,
+        user1SolAccount
+      );
+
+      // Initialize user1 margin account with a zero deposit
+      await program.methods
+        .depositMargin(new BN(0))
+        .accountsStrict({
+          marginAccount: user1MarginAccount,
+          marginVault: marginVault,
+          vaultTokenAccount: solVault,
+          userTokenAccount: user1SolAccount,
+          owner: user1.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([user1])
+        .rpc();
+
+      // Get the margin account state after initialization
+      const marginAccountInitialized =
+        await program.account.marginAccount.fetch(user1MarginAccount);
+
+      // Verify the margin account is initialized correctly
+      assert.equal(
+        marginAccountInitialized.owner.toString(),
+        user1.publicKey.toString(),
+        "Margin account owner should be user1"
+      );
+      assert.equal(
+        marginAccountInitialized.solBalance.toString(),
+        "0",
+        "Initial SOL balance should be zero"
+      );
+      assert.equal(
+        marginAccountInitialized.usdcBalance.toString(),
+        "0",
+        "Initial USDC balance should be zero"
+      );
+
+      // Deposit SOL
+      await program.methods
+        .depositMargin(solDepositAmount)
+        .accountsStrict({
+          marginAccount: user1MarginAccount,
+          marginVault: marginVault,
+          vaultTokenAccount: solVault,
+          userTokenAccount: user1SolAccount,
+          owner: user1.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([user1])
+        .rpc();
+
+      // Get balances after deposit
+      const solVaultAfter = await getAccount(provider.connection, solVault);
+      const user1SolAfter = await getAccount(
+        provider.connection,
+        user1SolAccount
+      );
+      const marginAccountAfter = await program.account.marginAccount.fetch(
+        user1MarginAccount
+      );
+
+      // Verify state changes
+      assert.equal(
+        new BN(solVaultAfter.amount.toString())
+          .sub(new BN(solVaultBefore.amount.toString()))
+          .toString(),
+        solDepositAmount.toString(),
+        "SOL vault balance should increase by deposit amount"
+      );
+
+      assert.equal(
+        new BN(user1SolBefore.amount.toString())
+          .sub(new BN(user1SolAfter.amount.toString()))
+          .toString(),
+        solDepositAmount.toString(),
+        "User SOL balance should decrease by deposit amount"
+      );
+
+      assert.equal(
+        marginAccountAfter.solBalance.toString(),
+        solDepositAmount.toString(),
+        "Margin account SOL balance should equal deposit amount"
+      );
     });
 
-    // Create a sync native instruction to update the token account balance
-    const syncNativeIx = createSyncNativeInstruction(userSolAccount);
+    it("should initialize and deposit USDC to a new margin account", async () => {
+      // Get initial balances
+      const usdcVaultBefore = await getAccount(provider.connection, usdcVault);
+      const user2UsdcBefore = await getAccount(
+        provider.connection,
+        user2UsdcAccount
+      );
 
-    // Build and send the transaction
-    const tx = new anchor.web3.Transaction().add(wrapSolIx).add(syncNativeIx);
-
-    await provider.sendAndConfirm(tx);
-    console.log("Funded and synced user SOL account with 5 SOL");
-
-    // Create vault token accounts
-    const solVault = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      solMint,
-      marginVault,
-      true
-    );
-    solVaultAccount = solVault.address;
-    console.log("Created SOL vault:", solVaultAccount.toString());
-
-    const usdcVault = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      usdcMint,
-      marginVault,
-      true
-    );
-    usdcVaultAccount = usdcVault.address;
-    console.log("Created USDC vault:", usdcVaultAccount.toString());
-
-    // Initialize the margin vault
-    await program.methods
-      .initialize(new anchor.BN(withdrawalTimelock))
-      .accountsStrict({
-        authority: provider.wallet.publicKey,
-        marginVault: marginVault,
-        solVault: solVaultAccount,
-        usdcVault: usdcVaultAccount,
-        systemProgram: SystemProgram.programId,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        rent: SYSVAR_RENT_PUBKEY,
-      })
-      .rpc();
-    console.log("Initialized margin vault");
-
-    // Derive the user's margin account PDA
-    [userMarginAccount] = PublicKey.findProgramAddressSync(
-      [Buffer.from("margin_account"), provider.wallet.publicKey.toBuffer()],
-      program.programId
-    );
-    console.log("User margin account PDA:", userMarginAccount.toString());
-  });
-
-  it("Should initialize and deposit USDC to a new margin account", async () => {
-    // Get initial USDC balance in user account
-    const initialUserUsdcAccount = await getAccount(
-      provider.connection,
-      userUsdcAccount
-    );
-    const initialUserUsdcBalance = initialUserUsdcAccount.amount;
-
-    // Get initial USDC balance in vault
-    const initialVaultUsdcAccount = await getAccount(
-      provider.connection,
-      usdcVaultAccount
-    );
-    const initialVaultUsdcBalance = initialVaultUsdcAccount.amount;
-
-    // Perform the deposit
-    await program.methods
-      .depositMargin(usdcDepositAmount)
-      .accountsStrict({
-        marginAccount: userMarginAccount,
-        marginVault: marginVault,
-        vaultTokenAccount: usdcVaultAccount,
-        userTokenAccount: userUsdcAccount,
-        owner: provider.wallet.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      })
-      .rpc();
-
-    // Get final user USDC balance
-    const finalUserUsdcAccount = await getAccount(
-      provider.connection,
-      userUsdcAccount
-    );
-    const finalUserUsdcBalance = finalUserUsdcAccount.amount;
-
-    // Get final vault USDC balance
-    const finalVaultUsdcAccount = await getAccount(
-      provider.connection,
-      usdcVaultAccount
-    );
-    const finalVaultUsdcBalance = finalVaultUsdcAccount.amount;
-
-    // Verify token balances changed correctly
-    expect(
-      Number(initialUserUsdcBalance) - Number(finalUserUsdcBalance)
-    ).to.equal(Number(usdcDepositAmount));
-    expect(
-      Number(finalVaultUsdcBalance) - Number(initialVaultUsdcBalance)
-    ).to.equal(Number(usdcDepositAmount));
-
-    // Verify margin account state
-    const marginAccount = await program.account.marginAccount.fetch(
-      userMarginAccount
-    );
-    expect(marginAccount.owner.toString()).to.equal(
-      provider.wallet.publicKey.toString()
-    );
-    expect(marginAccount.usdcBalance.toString()).to.equal(
-      usdcDepositAmount.toString()
-    );
-    expect(marginAccount.solBalance.toString()).to.equal("0");
-    expect(marginAccount.pendingSolWithdrawal.toString()).to.equal("0");
-    expect(marginAccount.pendingUsdcWithdrawal.toString()).to.equal("0");
-  });
-
-  it("Should deposit SOL to an existing margin account", async () => {
-    // Get initial SOL balance in user account
-    const initialUserSolAccount = await getAccount(
-      provider.connection,
-      userSolAccount
-    );
-    const initialUserSolBalance = initialUserSolAccount.amount;
-
-    // Get initial SOL balance in vault
-    const initialVaultSolAccount = await getAccount(
-      provider.connection,
-      solVaultAccount
-    );
-    const initialVaultSolBalance = initialVaultSolAccount.amount;
-
-    // Deposit SOL to the same margin account
-    await program.methods
-      .depositMargin(solDepositAmount)
-      .accountsStrict({
-        marginAccount: userMarginAccount,
-        marginVault: marginVault,
-        vaultTokenAccount: solVaultAccount,
-        userTokenAccount: userSolAccount,
-        owner: provider.wallet.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      })
-      .rpc();
-
-    // Get final user SOL balance
-    const finalUserSolAccount = await getAccount(
-      provider.connection,
-      userSolAccount
-    );
-    const finalUserSolBalance = finalUserSolAccount.amount;
-
-    // Get final vault SOL balance
-    const finalVaultSolAccount = await getAccount(
-      provider.connection,
-      solVaultAccount
-    );
-    const finalVaultSolBalance = finalVaultSolAccount.amount;
-
-    // Verify token balances changed correctly
-    expect(
-      Number(initialUserSolBalance) - Number(finalUserSolBalance)
-    ).to.equal(Number(solDepositAmount));
-    expect(
-      Number(finalVaultSolBalance) - Number(initialVaultSolBalance)
-    ).to.equal(Number(solDepositAmount));
-
-    // Verify margin account state is updated with both SOL and USDC balances
-    const marginAccount = await program.account.marginAccount.fetch(
-      userMarginAccount
-    );
-    expect(marginAccount.owner.toString()).to.equal(
-      provider.wallet.publicKey.toString()
-    );
-    expect(marginAccount.usdcBalance.toString()).to.equal(
-      usdcDepositAmount.toString()
-    );
-    expect(marginAccount.solBalance.toString()).to.equal(
-      solDepositAmount.toString()
-    );
-  });
-
-  it("Should fail to deposit with incorrect token account owner", async () => {
-    // Create another wallet
-    const otherWallet = Keypair.generate();
-
-    // Airdrop some SOL to the other wallet
-    const signature = await provider.connection.requestAirdrop(
-      otherWallet.publicKey,
-      anchor.web3.LAMPORTS_PER_SOL
-    );
-    await provider.connection.confirmTransaction(signature);
-
-    // Create a token account for the other wallet
-    const otherUsdcAccount = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      usdcMint,
-      otherWallet.publicKey
-    );
-
-    // Fund the other wallet's USDC account
-    await mintTo(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      usdcMint,
-      otherUsdcAccount.address,
-      provider.wallet.publicKey,
-      1_000_000 // 1 USDC
-    );
-
-    try {
-      // Try to deposit from the main wallet's margin account using the other wallet's token account
+      // Initialize user2 margin account with a zero deposit
       await program.methods
-        .depositMargin(new anchor.BN(100_000))
+        .depositMargin(new BN(0))
         .accountsStrict({
-          marginAccount: userMarginAccount,
+          marginAccount: user2MarginAccount,
           marginVault: marginVault,
-          vaultTokenAccount: usdcVaultAccount,
-          userTokenAccount: otherUsdcAccount.address,
-          owner: provider.wallet.publicKey,
+          vaultTokenAccount: usdcVault,
+          userTokenAccount: user2UsdcAccount,
+          owner: user2.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
+        .signers([user2])
         .rpc();
 
-      // If we reach here, the test should fail
-      expect.fail("Should have thrown a constraint error");
-    } catch (error: any) {
-      // We expect a constraint error
-      expect(error.toString()).to.include("Constraint");
-    }
-  });
-
-  it("Should fail to deposit with incorrect vault token account", async () => {
-    // Create a random token account that's not the vault
-    const fakeVault = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
-      usdcMint,
-      Keypair.generate().publicKey,
-      true
-    );
-
-    try {
-      // Try to deposit to a fake vault
+      // Deposit USDC
       await program.methods
-        .depositMargin(new anchor.BN(100_000))
+        .depositMargin(usdcDepositAmount)
         .accountsStrict({
-          marginAccount: userMarginAccount,
+          marginAccount: user2MarginAccount,
           marginVault: marginVault,
-          vaultTokenAccount: fakeVault.address,
-          userTokenAccount: userUsdcAccount,
-          owner: provider.wallet.publicKey,
+          vaultTokenAccount: usdcVault,
+          userTokenAccount: user2UsdcAccount,
+          owner: user2.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
+        .signers([user2])
         .rpc();
 
-      // If we reach here, the test should fail
-      expect.fail("Should have thrown a constraint error");
-    } catch (error: any) {
-      // We expect a constraint error
-      expect(error.toString()).to.include("Constraint");
-    }
+      // Get balances after deposit
+      const usdcVaultAfter = await getAccount(provider.connection, usdcVault);
+      const user2UsdcAfter = await getAccount(
+        provider.connection,
+        user2UsdcAccount
+      );
+      const marginAccountAfter = await program.account.marginAccount.fetch(
+        user2MarginAccount
+      );
+
+      // Verify state changes
+      assert.equal(
+        new BN(usdcVaultAfter.amount.toString())
+          .sub(new BN(usdcVaultBefore.amount.toString()))
+          .toString(),
+        usdcDepositAmount.toString(),
+        "USDC vault balance should increase by deposit amount"
+      );
+
+      assert.equal(
+        new BN(user2UsdcBefore.amount.toString())
+          .sub(new BN(user2UsdcAfter.amount.toString()))
+          .toString(),
+        usdcDepositAmount.toString(),
+        "User USDC balance should decrease by deposit amount"
+      );
+
+      assert.equal(
+        marginAccountAfter.usdcBalance.toString(),
+        usdcDepositAmount.toString(),
+        "Margin account USDC balance should equal deposit amount"
+      );
+    });
+
+    it("should deposit additional SOL to an existing margin account", async () => {
+      // Get initial balances
+      const solVaultBefore = await getAccount(provider.connection, solVault);
+      const user1SolBefore = await getAccount(
+        provider.connection,
+        user1SolAccount
+      );
+      const marginAccountBefore = await program.account.marginAccount.fetch(
+        user1MarginAccount
+      );
+
+      // Deposit more SOL
+      const additionalSolDeposit = new BN(LAMPORTS_PER_SOL / 2); // 0.5 SOL
+      await program.methods
+        .depositMargin(additionalSolDeposit)
+        .accountsStrict({
+          marginAccount: user1MarginAccount,
+          marginVault: marginVault,
+          vaultTokenAccount: solVault,
+          userTokenAccount: user1SolAccount,
+          owner: user1.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([user1])
+        .rpc();
+
+      // Get balances after deposit
+      const solVaultAfter = await getAccount(provider.connection, solVault);
+      const user1SolAfter = await getAccount(
+        provider.connection,
+        user1SolAccount
+      );
+      const marginAccountAfter = await program.account.marginAccount.fetch(
+        user1MarginAccount
+      );
+
+      // Verify state changes
+      assert.equal(
+        new BN(solVaultAfter.amount.toString())
+          .sub(new BN(solVaultBefore.amount.toString()))
+          .toString(),
+        additionalSolDeposit.toString(),
+        "SOL vault balance should increase by additional deposit amount"
+      );
+
+      assert.equal(
+        new BN(user1SolBefore.amount.toString())
+          .sub(new BN(user1SolAfter.amount.toString()))
+          .toString(),
+        additionalSolDeposit.toString(),
+        "User SOL balance should decrease by additional deposit amount"
+      );
+
+      assert.equal(
+        marginAccountAfter.solBalance.toString(),
+        new BN(marginAccountBefore.solBalance.toString())
+          .add(additionalSolDeposit)
+          .toString(),
+        "Margin account SOL balance should increase by additional deposit amount"
+      );
+    });
+
+    it("should deposit additional USDC to an existing margin account", async () => {
+      // Get initial balances
+      const usdcVaultBefore = await getAccount(provider.connection, usdcVault);
+      const user2UsdcBefore = await getAccount(
+        provider.connection,
+        user2UsdcAccount
+      );
+      const marginAccountBefore = await program.account.marginAccount.fetch(
+        user2MarginAccount
+      );
+
+      // Deposit more USDC
+      const additionalUsdcDeposit = new BN(5_000_000); // 5 USDC
+      await program.methods
+        .depositMargin(additionalUsdcDeposit)
+        .accountsStrict({
+          marginAccount: user2MarginAccount,
+          marginVault: marginVault,
+          vaultTokenAccount: usdcVault,
+          userTokenAccount: user2UsdcAccount,
+          owner: user2.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([user2])
+        .rpc();
+
+      // Get balances after deposit
+      const usdcVaultAfter = await getAccount(provider.connection, usdcVault);
+      const user2UsdcAfter = await getAccount(
+        provider.connection,
+        user2UsdcAccount
+      );
+      const marginAccountAfter = await program.account.marginAccount.fetch(
+        user2MarginAccount
+      );
+
+      // Verify state changes
+      assert.equal(
+        new BN(usdcVaultAfter.amount.toString())
+          .sub(new BN(usdcVaultBefore.amount.toString()))
+          .toString(),
+        additionalUsdcDeposit.toString(),
+        "USDC vault balance should increase by additional deposit amount"
+      );
+
+      assert.equal(
+        new BN(user2UsdcBefore.amount.toString())
+          .sub(new BN(user2UsdcAfter.amount.toString()))
+          .toString(),
+        additionalUsdcDeposit.toString(),
+        "User USDC balance should decrease by additional deposit amount"
+      );
+
+      assert.equal(
+        marginAccountAfter.usdcBalance.toString(),
+        new BN(marginAccountBefore.usdcBalance.toString())
+          .add(additionalUsdcDeposit)
+          .toString(),
+        "Margin account USDC balance should increase by additional deposit amount"
+      );
+    });
+
+    it("should fail to deposit if amount is zero", async () => {
+      try {
+        await program.methods
+          .depositMargin(new BN(0))
+          .accountsStrict({
+            marginAccount: user1MarginAccount,
+            marginVault: marginVault,
+            vaultTokenAccount: solVault,
+            userTokenAccount: user1SolAccount,
+            owner: user1.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([user1])
+          .rpc();
+
+        assert.fail("Expected transaction to fail with zero amount");
+      } catch (error) {
+        assert.include(
+          error.message,
+          "Error",
+          "Expected error message about invalid token amount"
+        );
+      }
+    });
+
+    it("should fail to deposit if unauthorized user tries to deposit", async () => {
+      try {
+        // Try to deposit to user2's account using user1's signature
+        await program.methods
+          .depositMargin(new BN(1_000_000))
+          .accountsStrict({
+            marginAccount: user2MarginAccount,
+            marginVault: marginVault,
+            vaultTokenAccount: usdcVault,
+            userTokenAccount: user1UsdcAccount,
+            owner: user1.publicKey, // This should be user2
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([user1])
+          .rpc();
+
+        assert.fail("Expected transaction to fail with unauthorized user");
+      } catch (error) {
+        assert.include(
+          error.message,
+          "Error",
+          "Expected error message about unauthorized user"
+        );
+      }
+    });
+
+    it("should fail to deposit if amount exceeds balance", async () => {
+      const userSolBalance = await getAccount(
+        provider.connection,
+        user1SolAccount
+      );
+      const excessAmount = new BN(userSolBalance.amount.toString()).addn(1); // Balance + 1
+
+      try {
+        await program.methods
+          .depositMargin(excessAmount)
+          .accountsStrict({
+            marginAccount: user1MarginAccount,
+            marginVault: marginVault,
+            vaultTokenAccount: solVault,
+            userTokenAccount: user1SolAccount,
+            owner: user1.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([user1])
+          .rpc();
+
+        assert.fail("Expected transaction to fail with insufficient funds");
+      } catch (error) {
+        assert.include(
+          error.message,
+          "insufficient funds",
+          "Expected error message about insufficient funds"
+        );
+      }
+    });
   });
 });
