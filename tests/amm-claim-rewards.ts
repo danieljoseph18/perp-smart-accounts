@@ -282,10 +282,10 @@ describe("perp-amm (with configuration persistence)", () => {
 
     it("should not allow users to claim rewards if they have none", async () => {
       // Get balances before claiming rewards
-      const userStateBefore = await program.account.userState.fetch(user2State);
-      const user2UsdcBefore = await getAccount(
+      const userStateBefore = await program.account.userState.fetch(user1State);
+      const user1UsdcBefore = await getAccount(
         provider.connection,
-        user2UsdcAccount
+        user1UsdcAccount
       );
 
       // Check if user has any rewards owed
@@ -303,28 +303,28 @@ describe("perp-amm (with configuration persistence)", () => {
       await program.methods
         .claimRewards()
         .accountsStrict({
-          user: user2.publicKey,
+          user: user1.publicKey,
           poolState,
-          userState: user2State,
-          userUsdcAccount: user2UsdcAccount,
+          userState: user1State,
+          userUsdcAccount: user1UsdcAccount,
           usdcRewardVault,
           lpTokenMint,
           tokenProgram: TOKEN_PROGRAM_ID,
         })
-        .signers([user2])
+        .signers([user1])
         .rpc();
 
       // Get balances after claiming rewards
-      const userStateAfter = await program.account.userState.fetch(user2State);
-      const user2UsdcAfter = await getAccount(
+      const userStateAfter = await program.account.userState.fetch(user1State);
+      const user1UsdcAfter = await getAccount(
         provider.connection,
-        user2UsdcAccount
+        user1UsdcAccount
       );
 
       // Verify state is unchanged or that a small amount was claimed
       assert.isTrue(
-        new BN(user2UsdcAfter.amount.toString()).gte(
-          new BN(user2UsdcBefore.amount.toString())
+        new BN(user1UsdcAfter.amount.toString()).gte(
+          new BN(user1UsdcBefore.amount.toString())
         ),
         "User USDC balance should not decrease after claiming rewards"
       );

@@ -80,6 +80,7 @@ pub fn handle_claim_rewards(ctx: Context<ClaimRewards>) -> Result<()> {
     // 2) The user now has some "pending" amount stored locally
     let pending = user_state.pending_rewards;
     if pending == 0 {
+        // No rewards to claim
         return Ok(());
     }
 
