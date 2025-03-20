@@ -19,6 +19,7 @@ import BN from "bn.js";
 import * as dotenv from "dotenv";
 import { PerpMarginAccounts } from "../target/types/perp_margin_accounts";
 import { setupAmmProgram } from "./helpers/init-amm-program";
+import { wrapSol } from "./helpers/wrap-sol";
 
 dotenv.config();
 
@@ -161,14 +162,12 @@ describe("perp-amm (with configuration persistence)", () => {
           )
         ).address;
 
-        // Fund user1's SOL account with wrapped SOL from admin
-        await transfer(
-          provider.connection,
-          admin,
-          adminSolAccount,
+        await wrapSol(
+          user1.publicKey,
           user1SolAccount,
-          admin.publicKey,
-          initialSolDeposit.toNumber()
+          initialSolDeposit.toNumber(),
+          provider,
+          user1
         );
 
         // User1 deposit SOL to earn LP tokens
@@ -189,6 +188,16 @@ describe("perp-amm (with configuration persistence)", () => {
           })
           .signers([user1])
           .rpc();
+
+        // Fund user2's USDC account before deposit
+        await transfer(
+          provider.connection,
+          admin,
+          adminUsdcAccount,
+          user2UsdcAccount,
+          admin,
+          initialUsdcDeposit.toNumber()
+        );
 
         // User2 deposit USDC to earn LP tokens
         await program.methods
