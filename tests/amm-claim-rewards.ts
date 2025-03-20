@@ -156,7 +156,7 @@ describe("perp-amm (with configuration persistence)", () => {
       try {
         // Start rewards with a reward rate
         await program.methods
-          .startRewards(rewardAmount, rewardRate)
+          .startRewards(rewardAmount)
           .accountsStrict({
             admin: admin.publicKey,
             poolState,
@@ -176,17 +176,6 @@ describe("perp-amm (with configuration persistence)", () => {
             user1.publicKey
           )
         ).address;
-
-        // Add some SOL to user1's account
-        const wrapAmount = 2 * LAMPORTS_PER_SOL; // 2 SOL
-        const wrapIx = SystemProgram.transfer({
-          fromPubkey: admin.publicKey,
-          toPubkey: user1SolAccount,
-          lamports: wrapAmount,
-        });
-
-        const wrapTx = new anchor.web3.Transaction().add(wrapIx);
-        await provider.sendAndConfirm(wrapTx, [admin]);
 
         // User1 deposit SOL to earn rewards
         await program.methods

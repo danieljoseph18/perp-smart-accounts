@@ -28,15 +28,14 @@ pub struct StartRewards<'info> {
 
 pub fn handle_start_rewards(
     ctx: Context<StartRewards>,
-    usdc_amount: u64,          // Total rewards for the period
-    _tokens_per_interval: u64, // We'll calculate this ourselves
+    usdc_amount: u64, // Total rewards for the period
 ) -> Result<()> {
     let pool_state = &mut ctx.accounts.pool_state;
-    require_keys_eq!(
-        ctx.accounts.admin.key(),
-        pool_state.admin,
-        VaultError::Unauthorized
-    );
+
+    // Validate input USDC amount.
+    if usdc_amount == 0 {
+        return err!(VaultError::InvalidTokenAmount);
+    }
 
     // Transfer USDC from admin to reward vault
     let cpi_ctx = CpiContext::new(

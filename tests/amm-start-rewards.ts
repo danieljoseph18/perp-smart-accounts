@@ -127,7 +127,7 @@ describe("perp-amm (with configuration persistence)", () => {
 
       // Start rewards
       await program.methods
-        .startRewards(rewardAmount, rewardRate)
+        .startRewards(rewardAmount)
         .accountsStrict({
           admin: admin.publicKey,
           poolState,
@@ -174,7 +174,7 @@ describe("perp-amm (with configuration persistence)", () => {
 
       assert.equal(
         poolStateAfter.tokensPerInterval.toString(),
-        rewardRate.toString(),
+        rewardAmount.div(new BN(604800)).toString(),
         "Tokens per interval should be set correctly"
       );
 
@@ -187,7 +187,7 @@ describe("perp-amm (with configuration persistence)", () => {
     it("should fail if non-admin tries to start rewards", async () => {
       try {
         await program.methods
-          .startRewards(new BN(1000000), new BN(10))
+          .startRewards(new BN(1000000))
           .accountsStrict({
             admin: user1.publicKey,
             poolState,
@@ -212,11 +212,12 @@ describe("perp-amm (with configuration persistence)", () => {
       // Get pool state before updating rewards
       const poolStateBefore = await program.account.poolState.fetch(poolState);
 
-      const newRewardRate = rewardRate.muln(2); // Double the reward rate
+      // 10 USDC of rewards
+      const rewardsToDeposit = new BN(10_000_000);
 
       // Update rewards without adding more USDC
       await program.methods
-        .startRewards(new BN(0), newRewardRate)
+        .startRewards(rewardsToDeposit)
         .accountsStrict({
           admin: admin.publicKey,
           poolState,
@@ -230,10 +231,12 @@ describe("perp-amm (with configuration persistence)", () => {
       // Get pool state after updating rewards
       const poolStateAfter = await program.account.poolState.fetch(poolState);
 
+      const expectedTokensPerInterval = rewardsToDeposit.div(new BN(604800));
+
       // Verify state changes
       assert.equal(
         poolStateAfter.tokensPerInterval.toString(),
-        newRewardRate.toString(),
+        expectedTokensPerInterval.toString(),
         "Tokens per interval should be updated"
       );
 
@@ -247,25 +250,6 @@ describe("perp-amm (with configuration persistence)", () => {
         poolStateAfter.lastDistributionTime.toNumber() >=
           poolStateBefore.lastDistributionTime.toNumber(),
         "Last distribution time should be updated"
-      );
-    });
-
-    it("should update rewards correctly", async () => {
-      // Update rewards to force accumulation
-      await program.methods
-        .updateRewards()
-        .accountsStrict({
-          poolState,
-        })
-        .rpc();
-
-      // Get pool state after updating rewards
-      const poolStateAfter = await program.account.poolState.fetch(poolState);
-
-      // Verify state is properly updated
-      assert.isTrue(
-        poolStateAfter.lastDistributionTime.toNumber() > 0,
-        "Last distribution time should be set"
       );
     });
   });

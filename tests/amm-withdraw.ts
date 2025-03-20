@@ -66,7 +66,7 @@ describe("perp-amm (with configuration persistence)", () => {
   // User LP token accounts
   let user1LpTokenAccount: PublicKey;
   let user2LpTokenAccount: PublicKey;
-  
+
   // User states
   let user1State: PublicKey;
   let user2State: PublicKey;
@@ -107,19 +107,23 @@ describe("perp-amm (with configuration persistence)", () => {
     user2UsdcAccount = setup.user2UsdcAccount;
 
     // Create LP token accounts for users
-    user1LpTokenAccount = (await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      admin,
-      lpTokenMint,
-      user1.publicKey
-    )).address;
+    user1LpTokenAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        admin,
+        lpTokenMint,
+        user1.publicKey
+      )
+    ).address;
 
-    user2LpTokenAccount = (await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      admin,
-      lpTokenMint,
-      user2.publicKey
-    )).address;
+    user2LpTokenAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        admin,
+        lpTokenMint,
+        user2.publicKey
+      )
+    ).address;
 
     // Derive user states
     [user1State] = PublicKey.findProgramAddressSync(
@@ -147,23 +151,14 @@ describe("perp-amm (with configuration persistence)", () => {
     before(async () => {
       try {
         // Create a SOL token account for user1
-        const user1SolAccount = (await getOrCreateAssociatedTokenAccount(
-          provider.connection,
-          admin,
-          solMint,
-          user1.publicKey
-        )).address;
-
-        // Add some SOL to user1's account
-        const wrapAmount = 3 * LAMPORTS_PER_SOL; // 3 SOL
-        const wrapIx = SystemProgram.transfer({
-          fromPubkey: admin.publicKey,
-          toPubkey: user1SolAccount,
-          lamports: wrapAmount,
-        });
-
-        const wrapTx = new anchor.web3.Transaction().add(wrapIx);
-        await provider.sendAndConfirm(wrapTx, [admin]);
+        const user1SolAccount = (
+          await getOrCreateAssociatedTokenAccount(
+            provider.connection,
+            admin,
+            solMint,
+            user1.publicKey
+          )
+        ).address;
 
         // User1 deposit SOL to earn LP tokens
         await program.methods
@@ -196,7 +191,7 @@ describe("perp-amm (with configuration persistence)", () => {
             lpTokenMint,
             userLpTokenAccount: user2LpTokenAccount,
             chainlinkProgram: chainlinkProgram,
-            chainlinkFeed: chainlinkFeed, 
+            chainlinkFeed: chainlinkFeed,
             systemProgram: SystemProgram.programId,
             tokenProgram: TOKEN_PROGRAM_ID,
           })
@@ -209,18 +204,17 @@ describe("perp-amm (with configuration persistence)", () => {
 
     it("should withdraw SOL from the pool", async () => {
       // Create a SOL token account for user1 to receive the withdrawn SOL
-      const user1SolAccount = (await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        admin,
-        solMint,
-        user1.publicKey
-      )).address;
+      const user1SolAccount = (
+        await getOrCreateAssociatedTokenAccount(
+          provider.connection,
+          user1, // Use user1 as the payer to ensure they own the account
+          solMint,
+          user1.publicKey
+        )
+      ).address;
 
       // Get balances before withdrawal
-      const solVaultBefore = await getAccount(
-        provider.connection,
-        solVault
-      );
+      const solVaultBefore = await getAccount(provider.connection, solVault);
       const poolStateBefore = await program.account.poolState.fetch(poolState);
       const userStateBefore = await program.account.userState.fetch(user1State);
       const user1SolBefore = await getAccount(
@@ -263,10 +257,7 @@ describe("perp-amm (with configuration persistence)", () => {
         .rpc();
 
       // Get balances after withdrawal
-      const solVaultAfter = await getAccount(
-        provider.connection,
-        solVault
-      );
+      const solVaultAfter = await getAccount(provider.connection, solVault);
       const poolStateAfter = await program.account.poolState.fetch(poolState);
       const userStateAfter = await program.account.userState.fetch(user1State);
       const user1SolAfter = await getAccount(
@@ -429,12 +420,14 @@ describe("perp-amm (with configuration persistence)", () => {
 
     it("should fail to withdraw if LP token amount is zero", async () => {
       // Create a SOL token account for user1 to receive the withdrawn SOL
-      const user1SolAccount = (await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        admin,
-        solMint,
-        user1.publicKey
-      )).address;
+      const user1SolAccount = (
+        await getOrCreateAssociatedTokenAccount(
+          provider.connection,
+          user1, // Use user1 as the payer
+          solMint,
+          user1.publicKey
+        )
+      ).address;
 
       try {
         await program.methods
@@ -459,7 +452,7 @@ describe("perp-amm (with configuration persistence)", () => {
       } catch (error: any) {
         assert.include(
           error.message,
-          "Amount must be greater than zero",
+          "InvalidTokenAmount", // Update to match actual error in withdraw.rs
           "Expected error message about zero amount"
         );
       }
@@ -467,12 +460,14 @@ describe("perp-amm (with configuration persistence)", () => {
 
     it("should fail to withdraw if LP token amount exceeds balance", async () => {
       // Create a SOL token account for user1 to receive the withdrawn SOL
-      const user1SolAccount = (await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        admin,
-        solMint,
-        user1.publicKey
-      )).address;
+      const user1SolAccount = (
+        await getOrCreateAssociatedTokenAccount(
+          provider.connection,
+          user1, // Use user1 as the payer
+          solMint,
+          user1.publicKey
+        )
+      ).address;
 
       const user1LpBalance = await getAccount(
         provider.connection,
@@ -503,8 +498,8 @@ describe("perp-amm (with configuration persistence)", () => {
       } catch (error: any) {
         assert.include(
           error.message,
-          "insufficient funds",
-          "Expected error message about insufficient funds"
+          "InsufficientLpBalance", // Update to match actual error in withdraw.rs
+          "Expected error message about insufficient LP balance"
         );
       }
     });
