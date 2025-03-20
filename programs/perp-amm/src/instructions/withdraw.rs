@@ -73,6 +73,11 @@ pub fn handle_withdraw(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<(
     let pool_state = &mut ctx.accounts.pool_state;
     let user_state = &mut ctx.accounts.user_state;
 
+    // Validate input token amount.
+    if lp_token_amount == 0 {
+        return err!(VaultError::InvalidTokenAmount);
+    }
+
     if user_state.lp_token_balance < lp_token_amount {
         return err!(VaultError::InsufficientLpBalance);
     }

@@ -106,8 +106,8 @@ export async function setupAmmProgram(
 
     // Airdrop SOL to admin and users for transaction fees
     await ensureMinimumBalance(admin.publicKey, 5 * LAMPORTS_PER_SOL);
-    await ensureMinimumBalance(user1.publicKey, 2 * LAMPORTS_PER_SOL);
-    await ensureMinimumBalance(user2.publicKey, 2 * LAMPORTS_PER_SOL);
+    await ensureMinimumBalance(user1.publicKey, 5 * LAMPORTS_PER_SOL);
+    await ensureMinimumBalance(user2.publicKey, 5 * LAMPORTS_PER_SOL);
 
     // Get or create token accounts for all users
     const adminUsdcAccountInfo = await getOrCreateAssociatedTokenAccount(

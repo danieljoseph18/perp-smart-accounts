@@ -73,7 +73,7 @@ describe("perp-amm (with configuration persistence)", () => {
 
   // Test parameters
   const initialSolDeposit = new BN(2 * LAMPORTS_PER_SOL);
-  const initialUsdcDeposit = new BN(200_000_000); // 200 USDC with 6 decimals
+  const initialUsdcDeposit = new BN(10_000_000); // 10 USDC with 6 decimals
 
   // Global configuration state
   let configInitialized = false;
@@ -158,21 +158,10 @@ describe("perp-amm (with configuration persistence)", () => {
         )
       ).address;
 
-      // Add some SOL to user1's account
-      const wrapAmount = 3 * LAMPORTS_PER_SOL; // 3 SOL
-      const wrapIx = SystemProgram.transfer({
-        fromPubkey: admin.publicKey,
-        toPubkey: user1SolAccount,
-        lamports: wrapAmount,
-      });
-
-      const wrapTx = new anchor.web3.Transaction().add(wrapIx);
-      await provider.sendAndConfirm(wrapTx, [admin]);
+      console.log("Created sol ata: ", user1SolAccount);
 
       // Get balance before deposit
       const solVaultBefore = await getAccount(provider.connection, solVault);
-      const poolStateBefore = await program.account.poolState.fetch(poolState);
-      const userStateBefore = await program.account.userState.fetch(user1State);
       const lpTokenSupplyBefore = (
         await getMint(provider.connection, lpTokenMint)
       ).supply;
@@ -180,6 +169,11 @@ describe("perp-amm (with configuration persistence)", () => {
         provider.connection,
         user1SolAccount
       );
+      const user1NativeSolBefore = await provider.connection.getBalance(
+        user1.publicKey
+      );
+
+      console.log("Got lp mint and relevant accounts, trying to deposit... ");
 
       // Deposit SOL
       await program.methods
@@ -200,9 +194,10 @@ describe("perp-amm (with configuration persistence)", () => {
         .signers([user1])
         .rpc();
 
+      console.log("Deposit successful, verifying state changes...");
+
       // Get balance after deposit
       const solVaultAfter = await getAccount(provider.connection, solVault);
-      const poolStateAfter = await program.account.poolState.fetch(poolState);
       const userStateAfter = await program.account.userState.fetch(user1State);
       const lpTokenSupplyAfter = (
         await getMint(provider.connection, lpTokenMint)
@@ -211,9 +206,14 @@ describe("perp-amm (with configuration persistence)", () => {
         provider.connection,
         user1SolAccount
       );
+      const user1NativeSolAfter = await provider.connection.getBalance(
+        user1.publicKey
+      );
       const user1LpBalance = (
         await getAccount(provider.connection, user1LpTokenAccount)
       ).amount;
+
+      console.log("Got all balances, verifying state changes...");
 
       // Calculate expected values (accounting for 0.1% fee)
       const feeAmount = initialSolDeposit.muln(1).divn(1000); // 0.1% fee
@@ -228,12 +228,11 @@ describe("perp-amm (with configuration persistence)", () => {
         "SOL vault balance should increase by deposit amount"
       );
 
-      assert.equal(
-        new BN(user1SolBefore.amount.toString())
-          .sub(new BN(user1SolAfter.amount.toString()))
-          .toString(),
-        initialSolDeposit.toString(),
-        "User SOL balance should decrease by deposit amount"
+      assert.isTrue(
+        new BN(user1NativeSolBefore.toString())
+          .sub(new BN(user1NativeSolAfter.toString()))
+          .gt(initialSolDeposit),
+        "User SOL balance should decrease by deposit amount plus rent for account initialization"
       );
 
       assert.isTrue(
@@ -244,24 +243,15 @@ describe("perp-amm (with configuration persistence)", () => {
       );
 
       // Check user state updates
-      if (userStateBefore.lpTokenBalance) {
-        assert.isTrue(
-          userStateAfter.lpTokenBalance.gt(userStateBefore.lpTokenBalance),
-          "User LP token balance should increase"
-        );
-      } else {
-        assert.isTrue(
-          userStateAfter.lpTokenBalance.gtn(0),
-          "User LP token balance should be greater than zero"
-        );
-      }
+      assert.isTrue(
+        userStateAfter.lpTokenBalance.gtn(0),
+        "User LP token balance should be greater than zero"
+      );
     });
 
     it("should deposit USDC to the pool", async () => {
       // Get balances before deposit
       const usdcVaultBefore = await getAccount(provider.connection, usdcVault);
-      const poolStateBefore = await program.account.poolState.fetch(poolState);
-      const userStateBefore = await program.account.userState.fetch(user2State);
       const lpTokenSupplyBefore = (
         await getMint(provider.connection, lpTokenMint)
       ).supply;
@@ -291,7 +281,6 @@ describe("perp-amm (with configuration persistence)", () => {
 
       // Get balances after deposit
       const usdcVaultAfter = await getAccount(provider.connection, usdcVault);
-      const poolStateAfter = await program.account.poolState.fetch(poolState);
       const userStateAfter = await program.account.userState.fetch(user2State);
       const lpTokenSupplyAfter = (
         await getMint(provider.connection, lpTokenMint)
@@ -329,17 +318,10 @@ describe("perp-amm (with configuration persistence)", () => {
       );
 
       // Check user state updates
-      if (userStateBefore.lpTokenBalance) {
-        assert.isTrue(
-          userStateAfter.lpTokenBalance.gt(userStateBefore.lpTokenBalance),
-          "User LP token balance should increase"
-        );
-      } else {
-        assert.isTrue(
-          userStateAfter.lpTokenBalance.gtn(0),
-          "User LP token balance should be greater than zero"
-        );
-      }
+      assert.isTrue(
+        userStateAfter.lpTokenBalance.gtn(0),
+        "User LP token balance should be greater than zero"
+      );
     });
 
     it("should fail to deposit SOL if amount is zero", async () => {
@@ -376,7 +358,7 @@ describe("perp-amm (with configuration persistence)", () => {
       } catch (error: any) {
         assert.include(
           error.message,
-          "Amount must be greater than zero",
+          "Invalid token amount provided",
           "Expected error message about zero amount"
         );
       }

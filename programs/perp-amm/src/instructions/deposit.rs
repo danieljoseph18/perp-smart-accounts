@@ -72,6 +72,11 @@ pub fn handle_deposit(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
     let user_state = &mut ctx.accounts.user_state;
     let clock = Clock::get()?;
 
+    // Validate input token amount.
+    if token_amount == 0 {
+        return err!(VaultError::InvalidTokenAmount);
+    }
+
     // 1. Update rewards for the user.
     update_rewards(pool_state, user_state, &ctx.accounts.lp_token_mint)?;
 
