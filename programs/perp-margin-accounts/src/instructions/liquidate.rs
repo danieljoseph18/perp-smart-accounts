@@ -91,7 +91,7 @@ pub fn handle_liquidate_margin_account(
         let cpi_accounts = perp_amm::cpi::accounts::AdminDeposit {
             admin: ctx.accounts.authority.to_account_info(),
             pool_state: ctx.accounts.pool_state.to_account_info(),
-            admin_token_account: Some(ctx.accounts.margin_vault_token_account.to_account_info()),
+            admin_token_account: ctx.accounts.margin_vault_token_account.to_account_info(),
             vault_account: ctx.accounts.pool_vault_account.to_account_info(),
             chainlink_program: ctx.accounts.chainlink_program.to_account_info(),
             chainlink_feed: ctx.accounts.chainlink_feed.to_account_info(),

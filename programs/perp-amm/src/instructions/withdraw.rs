@@ -42,7 +42,7 @@ pub struct Withdraw<'info> {
 
     // For SOL withdrawals, require this account; it is a temporary WSOL account
     // that will be closed (unwrapped) returning native SOL to the user.
-    #[account(mut)]
+    #[account(mut, constraint = user_token_account.mint == NATIVE_MINT.parse::<Pubkey>().unwrap() || user_token_account.mint == pool_state.usdc_mint)]
     pub user_token_account: Account<'info, TokenAccount>,
 
     /// CHECK: Validated in constraint
@@ -154,69 +154,22 @@ pub fn handle_withdraw(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<(
             .ok_or(VaultError::MathError)?;
     }
 
-    // --- Token Transfer & SOL Unwrapping Flow ---
-    let is_sol_vault =
-        ctx.accounts.vault_account.mint == NATIVE_MINT.parse::<Pubkey>().unwrap();
+    // Create pool seeds for signing
+    let pool_seeds = &[b"pool_state".as_ref(), &[pool_state_bump]];
 
-    if is_sol_vault {
-        let pool_seeds = &[b"pool_state".as_ref(), &[pool_state_bump]];
-
-        // (1) Transfer WSOL from the pool vault to the user's temporary WSOL account.
-        let transfer_ix = anchor_spl::token::spl_token::instruction::transfer(
-            &ctx.accounts.token_program.key(),
-            &ctx.accounts.vault_account.key(),
-            &ctx.accounts.user_token_account.key(),
-            &pool_state_info.key(),
-            &[&pool_state_info.key()],
-            withdrawal_amount,
-        )?;
-        anchor_lang::solana_program::program::invoke_signed(
-            &transfer_ix,
-            &[
-                ctx.accounts.vault_account.to_account_info(),
-                ctx.accounts.user_token_account.to_account_info(),
-                pool_state_info.clone(),
-                ctx.accounts.token_program.to_account_info(),
-            ],
-            &[pool_seeds],
-        )?;
-
-        // (2) “Unwrap” the WSOL by closing the temporary account,
-        // which sends its lamports (i.e. the withdrawn SOL) to the user.
-        let close_ix = anchor_spl::token::spl_token::instruction::close_account(
-            &ctx.accounts.token_program.key(),
-            &ctx.accounts.user_token_account.key(),
-            &ctx.accounts.user.key(),
-            &ctx.accounts.user.key(),
-            &[&ctx.accounts.user.key()],
-        )?;
-        anchor_lang::solana_program::program::invoke(
-            &close_ix,
-            &[
-                ctx.accounts.user_token_account.to_account_info(),
-                ctx.accounts.user.to_account_info(),
-                ctx.accounts.token_program.to_account_info(),
-            ],
-        )?;
-    } else {
-        // For non-SOL tokens (e.g. USDC), we simply transfer them.
-        require!(
-            ctx.accounts.user_token_account.mint == ctx.accounts.vault_account.mint,
-            VaultError::InvalidTokenMint
-        );
-        token::transfer(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.vault_account.to_account_info(),
-                    to: ctx.accounts.user_token_account.to_account_info(),
-                    authority: pool_state_info,
-                },
-            )
-            .with_signer(&[&[b"pool_state".as_ref(), &[pool_state_bump]]]),
-            withdrawal_amount,
-        )?;
-    }
+    // Transfer tokens from vault to user's token account
+    token::transfer(
+        CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.vault_account.to_account_info(),
+                to: ctx.accounts.user_token_account.to_account_info(),
+                authority: pool_state_info,
+            },
+        )
+        .with_signer(&[pool_seeds]),
+        withdrawal_amount,
+    )?;
 
     // --- Update pool deposit totals ---
     if ctx.accounts.vault_account.key() == sol_vault {

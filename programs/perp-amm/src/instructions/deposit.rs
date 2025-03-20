@@ -3,7 +3,6 @@ use crate::{
     DEVNET_SOL_PRICE_FEED, MAINNET_SOL_PRICE_FEED, NATIVE_MINT,
 };
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{program::invoke, system_instruction};
 use anchor_spl::token::{self, Mint, MintTo, Token, TokenAccount, Transfer};
 use chainlink_solana as chainlink;
 
@@ -15,10 +14,12 @@ pub struct Deposit<'info> {
     #[account(mut, seeds = [b"pool_state".as_ref()], bump)]
     pub pool_state: Account<'info, PoolState>,
 
-    // For non-SOL deposits (like USDC) the user must supply this.
-    // It is not used when depositing SOL.
-    #[account(mut)]
-    pub user_token_account: Option<Account<'info, TokenAccount>>,
+    // Token account, e.g WSOL or USDC
+    #[account(
+        mut,
+        constraint = user_token_account.mint == NATIVE_MINT.parse::<Pubkey>().unwrap() || user_token_account.mint == pool_state.usdc_mint
+    )]
+    pub user_token_account: Account<'info, TokenAccount>,
 
     #[account(
         mut,
@@ -112,57 +113,17 @@ pub fn handle_deposit(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
     }
 
     // 5. Transfer the deposit from user to vault.
-    // If the vault is for SOL (i.e. WSOL), perform a system transfer and then sync_native.
-    let is_sol_vault = ctx.accounts.vault_account.mint == NATIVE_MINT.parse::<Pubkey>().unwrap();
-
-    if is_sol_vault {
-        // a. Transfer SOL from the user to the vault.
-        let transfer_ix = system_instruction::transfer(
-            ctx.accounts.user.key,
-            &ctx.accounts.vault_account.key(),
-            token_amount,
-        );
-        invoke(
-            &transfer_ix,
-            &[
-                ctx.accounts.user.to_account_info(),
-                ctx.accounts.vault_account.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-            ],
-        )?;
-
-        // b. Convert the received SOL into WSOL by syncing the vault account.
-        let sync_native_ix = anchor_spl::token::spl_token::instruction::sync_native(
-            &ctx.accounts.token_program.key(),
-            &ctx.accounts.vault_account.key(),
-        )?;
-        invoke(
-            &sync_native_ix,
-            &[
-                ctx.accounts.vault_account.to_account_info(),
-                ctx.accounts.token_program.to_account_info(),
-            ],
-        )?;
-    } else {
-        // For non-SOL tokens, require that the user_token_account is provided.
-        let user_token_account = ctx
-            .accounts
-            .user_token_account
-            .as_ref()
-            .ok_or(error!(VaultError::TokenAccountNotProvided))?;
-
-        token::transfer(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: user_token_account.to_account_info(),
-                    to: ctx.accounts.vault_account.to_account_info(),
-                    authority: ctx.accounts.user.to_account_info(),
-                },
-            ),
-            token_amount,
-        )?;
-    }
+    token::transfer(
+        CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.user_token_account.to_account_info(),
+                to: ctx.accounts.vault_account.to_account_info(),
+                authority: ctx.accounts.user.to_account_info(),
+            },
+        ),
+        token_amount,
+    )?;
 
     // 6. Compute initial Assets Under Management (AUM).
     let total_sol_usd = get_sol_usd_value(pool_state.sol_deposited, pool_state.sol_usd_price)?;

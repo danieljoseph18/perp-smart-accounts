@@ -17,6 +17,7 @@ import BN from "bn.js";
 import * as dotenv from "dotenv";
 import { PerpMarginAccounts } from "../target/types/perp_margin_accounts";
 import { setupAmmProgram } from "./helpers/init-amm-program";
+import { wrapSol } from "./helpers/wrap-sol";
 
 dotenv.config();
 
@@ -104,8 +105,16 @@ describe("perp-amm (with configuration persistence)", () => {
   });
 
   describe("admin_withdraw", () => {
-    it("should allow admin to withdraw SOL", async () => {
-      // First deposit SOL into the vault.
+    it("should allow admin to withdraw WSOL", async () => {
+      // First deposit WSOL into the vault.
+      await wrapSol(
+        admin.publicKey,
+        adminSolAccount,
+        LAMPORTS_PER_SOL,
+        provider,
+        admin
+      );
+
       const depositAmount = new BN(LAMPORTS_PER_SOL);
       await program.methods
         .adminDeposit(depositAmount)
@@ -122,17 +131,16 @@ describe("perp-amm (with configuration persistence)", () => {
         .signers([admin])
         .rpc();
 
-      // Get the pool state (and vault account) after deposit.
+      // Get the pool state and admin's WSOL balance before withdrawal
       const poolStateBefore = await program.account.poolState.fetch(poolState);
-      // For native SOL, use the admin's system account balance.
-      const adminSysBefore = await provider.connection.getBalance(
-        admin.publicKey
+      const adminSolBefore = await getAccount(
+        provider.connection,
+        adminSolAccount
       );
+      const solVaultBefore = await getAccount(provider.connection, solVault);
 
-      // FIXME: Wrong, we should be able to withdraw a partial amount.
-      // Because the SOL branch in admin_withdraw calls close_account (i.e.
-      // "unwraps" the entire WSOL account), we withdraw the full deposit.
-      const withdrawAmount = depositAmount;
+      // Withdraw half of the deposited amount
+      const withdrawAmount = depositAmount.divn(2);
 
       await program.methods
         .adminWithdraw(withdrawAmount)
@@ -150,9 +158,11 @@ describe("perp-amm (with configuration persistence)", () => {
         .rpc();
 
       const poolStateAfter = await program.account.poolState.fetch(poolState);
-      const adminSysAfter = await provider.connection.getBalance(
-        admin.publicKey
+      const adminSolAfter = await getAccount(
+        provider.connection,
+        adminSolAccount
       );
+      const solVaultAfter = await getAccount(provider.connection, solVault);
 
       // Verify that the pool state's SOL deposited is reduced by the
       // withdrawal amount.
@@ -162,13 +172,22 @@ describe("perp-amm (with configuration persistence)", () => {
         "Pool SOL deposited should decrease by withdrawal amount"
       );
 
-      // Verify that the admin's native SOL balance increased by at least the
-      // withdrawn amount (allowing for transaction fees).
-      const sysDiff = adminSysAfter - adminSysBefore;
-      assert.isAtLeast(
-        sysDiff,
-        withdrawAmount.toNumber(),
-        "Admin system balance should increase by withdrawal amount"
+      // Verify that the vault's balance decreased by the withdrawal amount
+      assert.equal(
+        new BN(solVaultBefore.amount.toString())
+          .sub(new BN(solVaultAfter.amount.toString()))
+          .toString(),
+        withdrawAmount.toString(),
+        "SOL vault balance should decrease by withdrawal amount"
+      );
+
+      // Verify that the admin's WSOL balance increased by the withdrawal amount
+      assert.equal(
+        new BN(adminSolAfter.amount.toString())
+          .sub(new BN(adminSolBefore.amount.toString()))
+          .toString(),
+        withdrawAmount.toString(),
+        "Admin WSOL balance should increase by withdrawal amount"
       );
     });
 

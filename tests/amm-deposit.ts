@@ -12,6 +12,7 @@ import {
   getAccount,
   getOrCreateAssociatedTokenAccount,
   getMint,
+  transfer,
 } from "@solana/spl-token";
 import { assert } from "chai";
 import BN from "bn.js";
@@ -147,7 +148,7 @@ describe("perp-amm (with configuration persistence)", () => {
   });
 
   describe("deposit", () => {
-    it("should deposit SOL to the pool", async () => {
+    it("should deposit WSOL to the pool", async () => {
       // Create a SOL token account for user1
       const user1SolAccount = (
         await getOrCreateAssociatedTokenAccount(
@@ -158,7 +159,17 @@ describe("perp-amm (with configuration persistence)", () => {
         )
       ).address;
 
-      console.log("Created sol ata: ", user1SolAccount);
+      console.log("Created WSOL ata: ", user1SolAccount);
+      
+      // Fund user1's WSOL account with tokens from admin
+      await transfer(
+        provider.connection,
+        admin,
+        adminSolAccount,
+        user1SolAccount,
+        admin.publicKey,
+        initialSolDeposit.toNumber()
+      );
 
       // Get balance before deposit
       const solVaultBefore = await getAccount(provider.connection, solVault);
@@ -169,13 +180,10 @@ describe("perp-amm (with configuration persistence)", () => {
         provider.connection,
         user1SolAccount
       );
-      const user1NativeSolBefore = await provider.connection.getBalance(
-        user1.publicKey
-      );
 
       console.log("Got lp mint and relevant accounts, trying to deposit... ");
 
-      // Deposit SOL
+      // Deposit WSOL
       await program.methods
         .deposit(initialSolDeposit)
         .accountsStrict({
@@ -206,9 +214,6 @@ describe("perp-amm (with configuration persistence)", () => {
         provider.connection,
         user1SolAccount
       );
-      const user1NativeSolAfter = await provider.connection.getBalance(
-        user1.publicKey
-      );
       const user1LpBalance = (
         await getAccount(provider.connection, user1LpTokenAccount)
       ).amount;
@@ -228,11 +233,12 @@ describe("perp-amm (with configuration persistence)", () => {
         "SOL vault balance should increase by deposit amount"
       );
 
-      assert.isTrue(
-        new BN(user1NativeSolBefore.toString())
-          .sub(new BN(user1NativeSolAfter.toString()))
-          .gt(initialSolDeposit),
-        "User SOL balance should decrease by deposit amount plus rent for account initialization"
+      assert.equal(
+        new BN(user1SolBefore.amount.toString())
+          .sub(new BN(user1SolAfter.amount.toString()))
+          .toString(),
+        initialSolDeposit.toString(),
+        "User WSOL balance should decrease by deposit amount"
       );
 
       assert.isTrue(

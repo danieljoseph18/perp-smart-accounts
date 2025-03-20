@@ -30,6 +30,10 @@ pub struct Initialize<'info> {
     #[account(mut)]
     pub usdc_vault: Account<'info, TokenAccount>,
 
+    #[account(mut)]
+    /// CHECK: This is not dangerous if you're verifying usage in your logic
+    pub usdc_mint: AccountInfo<'info>,
+
     /// Reward vault for USDC
     #[account(mut)]
     pub usdc_reward_vault: Account<'info, TokenAccount>,
@@ -58,6 +62,7 @@ pub fn handle_initialize(ctx: Context<Initialize>) -> Result<()> {
     pool_state.authority = ctx.accounts.authority.key();
     pool_state.sol_vault = ctx.accounts.sol_vault.key();
     pool_state.usdc_vault = ctx.accounts.usdc_vault.key();
+    pool_state.usdc_mint = ctx.accounts.usdc_mint.key();
     pool_state.lp_token_mint = ctx.accounts.lp_token_mint.key();
     pool_state.sol_deposited = 0;
     pool_state.usdc_deposited = 0;

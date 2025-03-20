@@ -239,8 +239,8 @@ export async function setupAmmProgram(
 
     // Airdrop SOL to admin and users
     await ensureMinimumBalance(admin.publicKey, 100 * LAMPORTS_PER_SOL);
-    await ensureMinimumBalance(user1.publicKey, 10 * LAMPORTS_PER_SOL);
-    await ensureMinimumBalance(user2.publicKey, 10 * LAMPORTS_PER_SOL);
+    await ensureMinimumBalance(user1.publicKey, 100 * LAMPORTS_PER_SOL);
+    await ensureMinimumBalance(user2.publicKey, 100 * LAMPORTS_PER_SOL);
 
     console.log("Creating USDC mint...");
 
@@ -374,6 +374,7 @@ export async function setupAmmProgram(
         poolState,
         solVault: solVault.address,
         usdcVault: usdcVault.address,
+        usdcMint: usdcMint,
         usdcRewardVault: usdcVault.address, // Using same vault for simplicity
         lpTokenMint,
         tokenProgram: TOKEN_PROGRAM_ID,

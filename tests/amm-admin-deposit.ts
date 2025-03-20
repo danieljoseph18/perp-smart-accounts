@@ -21,6 +21,7 @@ import BN from "bn.js";
 import * as dotenv from "dotenv";
 import { PerpMarginAccounts } from "../target/types/perp_margin_accounts";
 import { initializeMarginProgram } from "./helpers/init-margin-program";
+import { wrapSol } from "./helpers/wrap-sol";
 
 dotenv.config();
 
@@ -397,8 +398,8 @@ describe("perp-amm (with configuration persistence)", () => {
     await initializeMarginProgram(
       provider,
       marginProgram,
-      solVault.address,
-      usdcVault.address,
+      solMint,
+      usdcMint,
       chainlinkProgram,
       chainlinkFeed
     );
@@ -416,6 +417,7 @@ describe("perp-amm (with configuration persistence)", () => {
         poolState,
         solVault: solVault.address,
         usdcVault: usdcVault.address,
+        usdcMint: usdcMint,
         usdcRewardVault: usdcVault.address, // Using same vault for simplicity
         lpTokenMint,
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -438,22 +440,34 @@ describe("perp-amm (with configuration persistence)", () => {
   });
 
   describe("admin_deposit", () => {
-    it("should allow admin to deposit tokens to the SOL vault", async () => {
+    it("should allow admin to deposit WSOL to the SOL vault", async () => {
       // Get the current pool state to ensure we're using the correct values
       const poolStateAccount = await program.account.poolState.fetch(poolState);
+
+      // First, wrap some SOL for the admin
+      await wrapSol(
+        admin.publicKey,
+        adminSolAccount,
+        2 * LAMPORTS_PER_SOL,
+        provider,
+        admin
+      );
 
       // Get SOL vault balance before deposit
       const solVaultBefore = await getAccount(
         provider.connection,
         poolStateAccount.solVault
       );
-      // Instead of checking the admin SOL token account,
-      // get the admin's system account balance.
-      const adminSystemBefore = await provider.connection.getBalance(
-        admin.publicKey
+      // Check admin's WSOL balance before deposit
+      const adminSolBefore = await getAccount(
+        provider.connection,
+        adminSolAccount
       );
 
-      console.log("Admin system balance before deposit:", adminSystemBefore);
+      console.log(
+        "Admin WSOL balance before deposit:",
+        adminSolBefore.amount.toString()
+      );
 
       const depositAmount = new BN(1_000_000_000); // 1 SOL
       await program.methods
@@ -461,7 +475,7 @@ describe("perp-amm (with configuration persistence)", () => {
         .accountsStrict({
           admin: admin.publicKey,
           poolState,
-          adminTokenAccount: adminSolAccount, // still passed but ignored for native SOL
+          adminTokenAccount: adminSolAccount,
           vaultAccount: poolStateAccount.solVault,
           chainlinkProgram: chainlinkProgram,
           chainlinkFeed: chainlinkFeed,
@@ -476,9 +490,10 @@ describe("perp-amm (with configuration persistence)", () => {
         provider.connection,
         poolStateAccount.solVault
       );
-      // Check the admin's system balance after deposit
-      const adminSystemAfter = await provider.connection.getBalance(
-        admin.publicKey
+      // Check admin's WSOL balance after deposit
+      const adminSolAfter = await getAccount(
+        provider.connection,
+        adminSolAccount
       );
 
       // Verify that the vault balance increased by the deposit amount.
@@ -490,13 +505,13 @@ describe("perp-amm (with configuration persistence)", () => {
         "SOL vault balance should increase by deposit amount"
       );
 
-      // Since fees might affect the admin's system account, you may need to
-      // assert that the admin's balance dropped by at least the deposit amount.
-      const difference = adminSystemBefore - adminSystemAfter;
-      assert.isAtLeast(
-        difference,
-        depositAmount.toNumber(),
-        "Admin system balance should decrease by at least the deposit amount"
+      // Verify that the admin's WSOL balance decreased by the deposit amount
+      assert.equal(
+        new BN(adminSolBefore.amount.toString())
+          .sub(new BN(adminSolAfter.amount.toString()))
+          .toString(),
+        depositAmount.toString(),
+        "Admin WSOL balance should decrease by the deposit amount"
       );
     });
 

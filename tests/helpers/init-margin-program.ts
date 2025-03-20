@@ -66,12 +66,22 @@ export async function initializeMarginProgram(
       true
     );
 
+    console.log(
+      "Margin Program SOL vault:",
+      solVaultAccount.address.toString()
+    );
+
     const usdcVaultAccount = await getOrCreateAssociatedTokenAccount(
       provider.connection,
       (provider.wallet as anchor.Wallet).payer,
       usdcMint,
       marginVault,
       true
+    );
+
+    console.log(
+      "Margin Program USDC vault:",
+      usdcVaultAccount.address.toString()
     );
 
     // First initialize the margin vault

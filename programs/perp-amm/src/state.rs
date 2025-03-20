@@ -5,29 +5,6 @@ use anchor_lang::prelude::*;
 // -----------------------------------------------
 
 #[derive(Accounts)]
-pub struct Initialize<'info> {
-    #[account(init, payer = admin, space = 8 + PoolState::LEN)]
-    pub pool_state: Account<'info, PoolState>,
-
-    #[account(mut)]
-    pub admin: Signer<'info>,
-
-    /// CHECK: This is not dangerous if you're verifying usage in your logic
-    pub sol_vault: AccountInfo<'info>,
-
-    /// CHECK: Same as above, ensure usage is validated
-    pub usdc_vault: AccountInfo<'info>,
-
-    /// CHECK: Similarly ensure it's your mint
-    pub lp_token_mint: AccountInfo<'info>,
-
-    /// CHECK: Program's reward vault
-    pub usdc_reward_vault: AccountInfo<'info>,
-
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
 pub struct UpdateSolUsdPrice<'info> {
     #[account(mut)]
     pub pool_state: Account<'info, PoolState>,
@@ -57,6 +34,8 @@ pub struct PoolState {
 
     /// USDC vault account (USDC uses 6 decimals, so 1 USDC = 1_000_000)
     pub usdc_vault: Pubkey,
+
+    pub usdc_mint: Pubkey,
 
     /// LP token mint
     pub lp_token_mint: Pubkey,
@@ -108,6 +87,7 @@ impl PoolState {
         + 32                  // authority
         + 32                  // sol_vault
         + 32                  // usdc_vault
+        + 32                  // usdc_mint
         + 32                  // lp_token_mint
         + 8                   // sol_deposited
         + 8                   // usdc_deposited

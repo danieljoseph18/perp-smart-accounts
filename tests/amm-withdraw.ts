@@ -12,6 +12,7 @@ import {
   getAccount,
   getOrCreateAssociatedTokenAccount,
   getMint,
+  transfer,
 } from "@solana/spl-token";
 import { assert } from "chai";
 import BN from "bn.js";
@@ -150,7 +151,7 @@ describe("perp-amm (with configuration persistence)", () => {
     // First make deposits that will be withdrawn
     before(async () => {
       try {
-        // Create a SOL token account for user1
+        // Create a SOL token account for user1 and fund it with SOL
         const user1SolAccount = (
           await getOrCreateAssociatedTokenAccount(
             provider.connection,
@@ -159,6 +160,16 @@ describe("perp-amm (with configuration persistence)", () => {
             user1.publicKey
           )
         ).address;
+
+        // Fund user1's SOL account with wrapped SOL from admin
+        await transfer(
+          provider.connection,
+          admin,
+          adminSolAccount,
+          user1SolAccount,
+          admin.publicKey,
+          initialSolDeposit.toNumber()
+        );
 
         // User1 deposit SOL to earn LP tokens
         await program.methods
@@ -202,12 +213,12 @@ describe("perp-amm (with configuration persistence)", () => {
       }
     });
 
-    it("should withdraw SOL from the pool", async () => {
-      // Create a SOL token account for user1 to receive the withdrawn SOL
+    it("should withdraw WSOL from the pool", async () => {
+      // Create a WSOL token account for user1 to receive the withdrawn WSOL
       const user1SolAccount = (
         await getOrCreateAssociatedTokenAccount(
           provider.connection,
-          user1, // Use user1 as the payer to ensure they own the account
+          admin, // Use admin as the payer since they have enough SOL
           solMint,
           user1.publicKey
         )
@@ -237,7 +248,7 @@ describe("perp-amm (with configuration persistence)", () => {
       // Calculate half of the LP tokens to withdraw
       const withdrawLpAmount = new BN(user1LpBalanceBefore.toString()).divn(2);
 
-      // Withdraw SOL
+      // Withdraw WSOL
       await program.methods
         .withdraw(withdrawLpAmount)
         .accountsStrict({
@@ -283,7 +294,7 @@ describe("perp-amm (with configuration persistence)", () => {
         new BN(user1SolAfter.amount.toString()).gt(
           new BN(user1SolBefore.amount.toString())
         ),
-        "User SOL balance should increase"
+        "User WSOL balance should increase"
       );
 
       assert.isTrue(
@@ -423,7 +434,7 @@ describe("perp-amm (with configuration persistence)", () => {
       const user1SolAccount = (
         await getOrCreateAssociatedTokenAccount(
           provider.connection,
-          user1, // Use user1 as the payer
+          admin, // Use admin as the payer since they have enough SOL
           solMint,
           user1.publicKey
         )
@@ -463,7 +474,7 @@ describe("perp-amm (with configuration persistence)", () => {
       const user1SolAccount = (
         await getOrCreateAssociatedTokenAccount(
           provider.connection,
-          user1, // Use user1 as the payer
+          admin, // Use admin as the payer since they have enough SOL
           solMint,
           user1.publicKey
         )
