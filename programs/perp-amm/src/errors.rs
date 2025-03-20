@@ -28,4 +28,6 @@ pub enum VaultError {
     InsufficientFunds,
     #[msg("Invalid token amount provided")]
     InvalidTokenAmount,
+    #[msg("Previous period has not ended.")]
+    PreviousPeriodNotEnded,
 }

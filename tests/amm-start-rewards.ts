@@ -168,8 +168,8 @@ describe("perp-amm (with configuration persistence)", () => {
 
       assert.equal(
         poolStateAfter.totalRewardsDeposited.toString(),
-        poolStateBefore.totalRewardsDeposited.add(rewardAmount).toString(),
-        "Total rewards deposited should increase by reward amount"
+        rewardAmount.toString(),
+        "Total rewards deposited should change to the amount deposited"
       );
 
       assert.equal(
@@ -242,8 +242,8 @@ describe("perp-amm (with configuration persistence)", () => {
 
       assert.equal(
         poolStateAfter.totalRewardsDeposited.toString(),
-        poolStateBefore.totalRewardsDeposited.toString(),
-        "Total rewards deposited should remain unchanged"
+        rewardsToDeposit.toString(),
+        "Total rewards deposited should change to the amount deposited"
       );
 
       assert.isTrue(
