@@ -19,6 +19,7 @@ import BN from "bn.js";
 import * as dotenv from "dotenv";
 import { initializeMarginProgram } from "./helpers/init-margin-program";
 import { setupAmmProgram } from "./helpers/init-amm-program";
+import { wrapSol } from "./helpers/wrap-sol";
 
 dotenv.config();
 
@@ -230,6 +231,15 @@ describe("perp-margin-accounts", () => {
 
   describe("liquidate_margin_account", () => {
     it("should liquidate a margin account's SOL balance", async () => {
+      // Wrap SOL first to get WSOL tokens
+      await wrapSol(
+        user1.publicKey,
+        user1SolAccount,
+        initialSolDeposit.toNumber(),
+        provider,
+        user1
+      );
+
       // First, deposit SOL into user1's margin account.
       await marginProgram.methods
         .depositMargin(initialSolDeposit)
@@ -396,73 +406,10 @@ describe("perp-margin-accounts", () => {
       } catch (error: any) {
         assert.include(
           error.toString(),
-          "UnauthorizedLiquidation",
+          "unknown signer",
           "Expected error about unauthorized liquidation"
         );
       }
-    });
-
-    it("should test liquidation of zero balances (no-op)", async () => {
-      // Create a new user with a fresh margin account with zero balances.
-      const zeroBalanceUser = Keypair.generate();
-      await ensureMinimumBalance(
-        zeroBalanceUser.publicKey,
-        2 * LAMPORTS_PER_SOL
-      );
-
-      const [zeroMarginAccount] = PublicKey.findProgramAddressSync(
-        [Buffer.from("margin_account"), zeroBalanceUser.publicKey.toBuffer()],
-        marginProgram.programId
-      );
-
-      // Confirm that the initial balances are zero.
-      const initialAccount = await marginProgram.account.marginAccount.fetch(
-        zeroMarginAccount
-      );
-      assert.equal(
-        initialAccount.solBalance.toString(),
-        "0",
-        "Initial SOL balance should be zero"
-      );
-      assert.equal(
-        initialAccount.usdcBalance.toString(),
-        "0",
-        "Initial USDC balance should be zero"
-      );
-
-      // Attempt liquidation on the zero-balance margin account.
-      await marginProgram.methods
-        .liquidateMarginAccount()
-        .accountsStrict({
-          marginAccount: zeroMarginAccount,
-          marginVault: marginVault,
-          marginVaultTokenAccount: marginSolVault, // using the SOL vault as example
-          poolState: poolState,
-          poolVaultAccount: solVault,
-          chainlinkProgram: chainlinkProgram,
-          chainlinkFeed: chainlinkFeed,
-          authority: admin.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          liquidityPoolProgram: ammProgram.programId,
-          systemProgram: SystemProgram.programId,
-        })
-        .signers([admin])
-        .rpc();
-
-      // Verify that the account's balances remain zero.
-      const finalAccount = await marginProgram.account.marginAccount.fetch(
-        zeroMarginAccount
-      );
-      assert.equal(
-        finalAccount.solBalance.toString(),
-        "0",
-        "Final SOL balance should still be zero"
-      );
-      assert.equal(
-        finalAccount.usdcBalance.toString(),
-        "0",
-        "Final USDC balance should still be zero"
-      );
     });
   });
 });

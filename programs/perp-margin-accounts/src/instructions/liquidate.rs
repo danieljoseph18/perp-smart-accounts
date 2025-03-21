@@ -1,12 +1,8 @@
 use crate::errors::MarginError;
 use crate::state::{MarginAccount, MarginVault};
 use anchor_lang::prelude::*;
-use anchor_spl::token::{ Token, TokenAccount};
-use perp_amm::{
-    state::PoolState,
-    cpi::admin_deposit,
-    program::PerpAmm,
-};
+use anchor_spl::token::{Token, TokenAccount};
+use perp_amm::{cpi::direct_deposit, program::PerpAmm, state::PoolState};
 
 #[derive(Accounts)]
 pub struct LiquidateMarginAccount<'info> {
@@ -32,11 +28,7 @@ pub struct LiquidateMarginAccount<'info> {
     pub margin_vault_token_account: Account<'info, TokenAccount>,
 
     /// The liquidity pool's state account
-    #[account(
-        mut,
-        seeds = [b"pool_state".as_ref()],
-        bump
-    )]
+    #[account(mut)]
     pub pool_state: Account<'info, PoolState>,
 
     /// The liquidity pool's vault account that matches the token being withdrawn
@@ -65,13 +57,13 @@ pub struct LiquidateMarginAccount<'info> {
 }
 
 // No safety checks, so constrain caller.
-pub fn handler(
-    ctx: Context<LiquidateMarginAccount>,
-) -> Result<()> {
+pub fn handler(ctx: Context<LiquidateMarginAccount>) -> Result<()> {
     let margin_account = &mut ctx.accounts.margin_account;
 
     // Get current balance
-    let current_balance = if ctx.accounts.margin_vault_token_account.key() == ctx.accounts.margin_vault.margin_sol_vault {
+    let current_balance = if ctx.accounts.margin_vault_token_account.key()
+        == ctx.accounts.margin_vault.margin_sol_vault
+    {
         margin_account.sol_balance
     } else {
         margin_account.usdc_balance
@@ -80,26 +72,38 @@ pub fn handler(
     // Only process if there's a balance to wipe
     if current_balance > 0 {
         // Set balance to 0
-        if ctx.accounts.margin_vault_token_account.key() == ctx.accounts.margin_vault.margin_sol_vault {
+        if ctx.accounts.margin_vault_token_account.key()
+            == ctx.accounts.margin_vault.margin_sol_vault
+        {
             margin_account.sol_balance = 0;
         } else {
             margin_account.usdc_balance = 0;
         }
 
         // Transfer entire balance to liquidity pool
-        let cpi_program = ctx.accounts.liquidity_pool_program.to_account_info();
-        let cpi_accounts = perp_amm::cpi::accounts::AdminDeposit {
-            admin: ctx.accounts.authority.to_account_info(),
-            pool_state: ctx.accounts.pool_state.to_account_info(),
-            admin_token_account: ctx.accounts.margin_vault_token_account.to_account_info(),
-            vault_account: ctx.accounts.pool_vault_account.to_account_info(),
-            chainlink_program: ctx.accounts.chainlink_program.to_account_info(),
-            chainlink_feed: ctx.accounts.chainlink_feed.to_account_info(),
-            token_program: ctx.accounts.token_program.to_account_info(),
-            system_program: ctx.accounts.system_program.to_account_info(),
-        };
-        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
-        admin_deposit(cpi_ctx, current_balance)?;
+        // Derive the seeds for the margin vault PDA.
+        let vault_seeds: &[&[u8]] = &[b"margin_vault" as &[u8], &[ctx.accounts.margin_vault.bump]];
+
+        // Wrap it inside another slice to get the signer_seeds.
+        let signer_seeds = &[vault_seeds];
+
+        // Build CPI context with the signer seeds.
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.liquidity_pool_program.to_account_info(),
+            perp_amm::cpi::accounts::DirectDeposit {
+                depositor: ctx.accounts.margin_vault.to_account_info(),
+                pool_state: ctx.accounts.pool_state.to_account_info(),
+                depositor_token_account: ctx.accounts.margin_vault_token_account.to_account_info(),
+                vault_account: ctx.accounts.pool_vault_account.to_account_info(),
+                chainlink_program: ctx.accounts.chainlink_program.to_account_info(),
+                chainlink_feed: ctx.accounts.chainlink_feed.to_account_info(),
+                token_program: ctx.accounts.token_program.to_account_info(),
+                system_program: ctx.accounts.system_program.to_account_info(),
+            },
+            signer_seeds,
+        );
+
+        direct_deposit(cpi_ctx, current_balance)?;
     }
 
     Ok(())

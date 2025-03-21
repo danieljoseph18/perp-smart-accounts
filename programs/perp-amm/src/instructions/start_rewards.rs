@@ -4,7 +4,6 @@ use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 #[derive(Accounts)]
 pub struct StartRewards<'info> {
-    #[account(mut)]
     pub admin: Signer<'info>,
 
     #[account(
@@ -26,7 +25,7 @@ pub struct StartRewards<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-pub fn handle_start_rewards(
+pub fn handler(
     ctx: Context<StartRewards>,
     usdc_amount: u64, // Total rewards for the period
 ) -> Result<()> {

@@ -1,6 +1,6 @@
 use crate::{
-    errors::VaultError, instructions::update_rewards::*, state::*, CHAINLINK_PROGRAM_ID,
-    DEVNET_SOL_PRICE_FEED, MAINNET_SOL_PRICE_FEED, NATIVE_MINT,
+    errors::VaultError, state::*, util::*, CHAINLINK_PROGRAM_ID, DEVNET_SOL_PRICE_FEED,
+    MAINNET_SOL_PRICE_FEED, NATIVE_MINT,
 };
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount, Transfer};
@@ -66,7 +66,7 @@ pub struct Withdraw<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_withdraw(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<()> {
+pub fn handler(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<()> {
     // --- Pre-burn & reward update logic remains unchanged ---
     let pool_state_info = ctx.accounts.pool_state.to_account_info();
     let pool_state_bump = ctx.bumps.pool_state;
@@ -111,8 +111,7 @@ pub fn handle_withdraw(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<(
         )?;
         pool_state.sol_usd_price = round.answer;
     }
-    let total_sol_usd =
-        get_sol_usd_value(pool_state.sol_deposited, pool_state.sol_usd_price)?;
+    let total_sol_usd = get_sol_usd_value(pool_state.sol_deposited, pool_state.sol_usd_price)?;
     let current_aum = total_sol_usd
         .checked_add(pool_state.usdc_deposited)
         .ok_or(VaultError::MathError)?;

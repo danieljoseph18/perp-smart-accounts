@@ -1,14 +1,11 @@
-use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer};
-use crate::state::{MarginAccount, MarginVault};
 use crate::errors::MarginError;
-use perp_amm::{
-    state::PoolState,
-    program::PerpAmm,
-};
-use crate::util::validate::validate_balances;
+use crate::state::{MarginAccount, MarginVault};
 use crate::util::fees::process_fees;
 use crate::util::pnl::process_pnl_update;
+use crate::util::validate::validate_balances;
+use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Token, TokenAccount, Transfer};
+use perp_amm::{program::PerpAmm, state::PoolState};
 
 #[derive(Accounts)]
 pub struct ExecuteWithdrawal<'info> {
@@ -80,12 +77,11 @@ pub struct ExecuteWithdrawal<'info> {
         constraint = authority.key() == margin_vault.authority @ MarginError::UnauthorizedExecution
     )]
     pub authority: Signer<'info>,
-    
+
     pub token_program: Program<'info, Token>,
     pub liquidity_pool_program: Program<'info, PerpAmm>,
     pub system_program: Program<'info, System>,
 }
-
 
 // Split the function to reduce stack usage
 pub fn handler(
@@ -101,39 +97,32 @@ pub fn handler(
         &mut ctx.accounts.margin_account,
         &mut ctx.accounts.margin_vault,
         sol_fees_owed,
-        usdc_fees_owed
+        usdc_fees_owed,
     )?;
-    
+
     // Validate balances against locked amounts
-    validate_balances(
-        &ctx.accounts.margin_account,
-        locked_sol,
-        locked_usdc
-    )?;
-    
+    validate_balances(&ctx.accounts.margin_account, locked_sol, locked_usdc)?;
+
     // Process PnL updates if needed
     if pnl_update != 0 {
-        process_pnl_update(
-            &mut ctx,
-            pnl_update
-        )?;
+        process_pnl_update(&mut ctx, pnl_update)?;
     }
-    
+
     // Process withdrawals
     process_withdrawals(&mut ctx)?;
-    
+
     Ok(())
 }
-
 
 // Helper function to process withdrawals
 fn process_withdrawals(ctx: &mut Context<ExecuteWithdrawal>) -> Result<()> {
     let margin_account = &mut ctx.accounts.margin_account;
-    
+
     // Process SOL withdrawal if pending.
     if margin_account.pending_sol_withdrawal > 0 {
         let sol_amount = margin_account.pending_sol_withdrawal;
-        margin_account.sol_balance = margin_account.sol_balance
+        margin_account.sol_balance = margin_account
+            .sol_balance
             .checked_sub(sol_amount)
             .ok_or(MarginError::ArithmeticOverflow)?;
 
@@ -156,7 +145,8 @@ fn process_withdrawals(ctx: &mut Context<ExecuteWithdrawal>) -> Result<()> {
     // Process USDC withdrawal if pending.
     if margin_account.pending_usdc_withdrawal > 0 {
         let usdc_amount = margin_account.pending_usdc_withdrawal;
-        margin_account.usdc_balance = margin_account.usdc_balance
+        margin_account.usdc_balance = margin_account
+            .usdc_balance
             .checked_sub(usdc_amount)
             .ok_or(MarginError::ArithmeticOverflow)?;
 

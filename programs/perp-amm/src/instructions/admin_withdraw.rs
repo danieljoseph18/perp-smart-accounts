@@ -7,7 +7,6 @@ use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 #[derive(Accounts)]
 pub struct AdminWithdraw<'info> {
-    #[account(mut)]
     pub admin: Signer<'info>,
 
     #[account(
@@ -30,7 +29,6 @@ pub struct AdminWithdraw<'info> {
     )]
     pub admin_token_account: Account<'info, TokenAccount>,
 
-
     /// CHECK: Validated by its constraint.
     #[account(address = CHAINLINK_PROGRAM_ID.parse::<Pubkey>().unwrap())]
     pub chainlink_program: AccountInfo<'info>,
@@ -52,22 +50,22 @@ pub struct AdminWithdraw<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_admin_withdraw(ctx: Context<AdminWithdraw>, amount: u64) -> Result<()> {
-       // Get pool_state's AccountInfo for CPI
-        let pool_state_info = ctx.accounts.pool_state.to_account_info();
+pub fn handler(ctx: Context<AdminWithdraw>, amount: u64) -> Result<()> {
+    // Get pool_state's AccountInfo for CPI
+    let pool_state_info = ctx.accounts.pool_state.to_account_info();
 
-        let cpi_ctx = CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            Transfer {
-                from: ctx.accounts.vault_account.to_account_info(),
-                to: ctx.accounts.admin_token_account.to_account_info(),
-                authority: pool_state_info,
-            },
-        );
-        token::transfer(
-            cpi_ctx.with_signer(&[&[b"pool_state".as_ref(), &[ctx.bumps.pool_state]]]),
-            amount,
-        )?;
+    let cpi_ctx = CpiContext::new(
+        ctx.accounts.token_program.to_account_info(),
+        Transfer {
+            from: ctx.accounts.vault_account.to_account_info(),
+            to: ctx.accounts.admin_token_account.to_account_info(),
+            authority: pool_state_info,
+        },
+    );
+    token::transfer(
+        cpi_ctx.with_signer(&[&[b"pool_state".as_ref(), &[ctx.bumps.pool_state]]]),
+        amount,
+    )?;
 
     // Finally, decrement the deposited token amounts on pool_state.
     if ctx.accounts.vault_account.key() == ctx.accounts.pool_state.sol_vault {

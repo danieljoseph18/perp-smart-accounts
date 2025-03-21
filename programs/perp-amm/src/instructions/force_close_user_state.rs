@@ -4,7 +4,6 @@ use crate::{errors::VaultError, state::PoolState};
 
 #[derive(Accounts)]
 pub struct ForceCloseUserState<'info> {
-    #[account(mut)]
     pub admin: Signer<'info>,
 
     #[account(
@@ -28,7 +27,7 @@ pub struct ForceCloseUserState<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_force_close_user_state(ctx: Context<ForceCloseUserState>) -> Result<()> {
+pub fn handler(ctx: Context<ForceCloseUserState>) -> Result<()> {
     // Verify admin
     require_keys_eq!(
         ctx.accounts.admin.key(),

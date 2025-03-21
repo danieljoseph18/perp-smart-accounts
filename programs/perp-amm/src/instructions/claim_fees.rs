@@ -4,7 +4,6 @@ use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 #[derive(Accounts)]
 pub struct ClaimFees<'info> {
-    #[account(mut)]
     pub admin: Signer<'info>,
 
     #[account(
@@ -46,7 +45,7 @@ pub struct ClaimFees<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-pub fn handle_claim_fees(ctx: Context<ClaimFees>) -> Result<()> {
+pub fn handler(ctx: Context<ClaimFees>) -> Result<()> {
     let pool_state = &mut ctx.accounts.pool_state;
 
     // Transfer accumulated SOL fees if any

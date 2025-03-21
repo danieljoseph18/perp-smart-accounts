@@ -117,11 +117,11 @@ describe("perp-amm (with configuration persistence)", () => {
 
       const depositAmount = new BN(LAMPORTS_PER_SOL);
       await program.methods
-        .adminDeposit(depositAmount)
+        .directDeposit(depositAmount)
         .accountsStrict({
-          admin: admin.publicKey,
+          depositor: admin.publicKey,
           poolState,
-          adminTokenAccount: adminSolAccount,
+          depositorTokenAccount: adminSolAccount,
           vaultAccount: solVault,
           chainlinkProgram: chainlinkProgram,
           chainlinkFeed: chainlinkFeed,
@@ -195,11 +195,11 @@ describe("perp-amm (with configuration persistence)", () => {
       // Deposit USDC into the vault.
       const depositAmount = new BN(100_000_000); // 100 USDC
       await program.methods
-        .adminDeposit(depositAmount)
+        .directDeposit(depositAmount)
         .accountsStrict({
-          admin: admin.publicKey,
+          depositor: admin.publicKey,
           poolState,
-          adminTokenAccount: adminUsdcAccount,
+          depositorTokenAccount: adminUsdcAccount,
           vaultAccount: usdcVault,
           chainlinkProgram: chainlinkProgram,
           chainlinkFeed: chainlinkFeed,

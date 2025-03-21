@@ -1,6 +1,6 @@
-use anchor_lang::prelude::*;
 use crate::errors::MarginError;
 use crate::state::{MarginAccount, MarginVault};
+use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
 pub struct CancelWithdrawal<'info> {
@@ -28,7 +28,7 @@ pub struct CancelWithdrawal<'info> {
 
 pub fn handler(ctx: Context<CancelWithdrawal>) -> Result<()> {
     let margin_account = &mut ctx.accounts.margin_account;
-    
+
     // Clear pending withdrawals
     margin_account.pending_sol_withdrawal = 0;
     margin_account.pending_usdc_withdrawal = 0;

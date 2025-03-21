@@ -2,7 +2,7 @@ use crate::errors::MarginError;
 use crate::instructions::ExecuteWithdrawal;
 use anchor_lang::prelude::*;
 use chainlink_solana as chainlink;
-use perp_amm::cpi::{admin_deposit, admin_withdraw};
+use perp_amm::cpi::{admin_withdraw, direct_deposit};
 
 /**
  * @dev Helper function to process PnL updates.
@@ -142,10 +142,10 @@ fn process_negative_pnl(
             margin_account.sol_balance = margin_account.sol_balance.saturating_sub(deduct_sol);
 
             let cpi_program = ctx.accounts.liquidity_pool_program.to_account_info();
-            let cpi_accounts = perp_amm::cpi::accounts::AdminDeposit {
-                admin: ctx.accounts.authority.to_account_info(),
+            let cpi_accounts = perp_amm::cpi::accounts::DirectDeposit {
+                depositor: ctx.accounts.authority.to_account_info(),
                 pool_state: ctx.accounts.pool_state.to_account_info(),
-                admin_token_account: ctx.accounts.margin_sol_vault.to_account_info(),
+                depositor_token_account: ctx.accounts.margin_sol_vault.to_account_info(),
                 vault_account: ctx.accounts.pool_vault_account.to_account_info(),
                 chainlink_program: ctx.accounts.chainlink_program.to_account_info(),
                 chainlink_feed: ctx.accounts.chainlink_feed.to_account_info(),
@@ -153,7 +153,7 @@ fn process_negative_pnl(
                 system_program: ctx.accounts.system_program.to_account_info(),
             };
             let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
-            admin_deposit(cpi_ctx, deduct_sol)?;
+            direct_deposit(cpi_ctx, deduct_sol)?;
         }
     } else {
         // Using USDC for settlement
@@ -169,10 +169,10 @@ fn process_negative_pnl(
             margin_account.usdc_balance = margin_account.usdc_balance.saturating_sub(deduct_usdc);
 
             let cpi_program = ctx.accounts.liquidity_pool_program.to_account_info();
-            let cpi_accounts = perp_amm::cpi::accounts::AdminDeposit {
-                admin: ctx.accounts.authority.to_account_info(),
+            let cpi_accounts = perp_amm::cpi::accounts::DirectDeposit {
+                depositor: ctx.accounts.authority.to_account_info(),
                 pool_state: ctx.accounts.pool_state.to_account_info(),
-                admin_token_account: ctx.accounts.margin_usdc_vault.to_account_info(),
+                depositor_token_account: ctx.accounts.margin_usdc_vault.to_account_info(),
                 vault_account: ctx.accounts.pool_vault_account.to_account_info(),
                 chainlink_program: ctx.accounts.chainlink_program.to_account_info(),
                 chainlink_feed: ctx.accounts.chainlink_feed.to_account_info(),
@@ -180,7 +180,7 @@ fn process_negative_pnl(
                 system_program: ctx.accounts.system_program.to_account_info(),
             };
             let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
-            admin_deposit(cpi_ctx, deduct_usdc)?;
+            direct_deposit(cpi_ctx, deduct_usdc)?;
         }
     }
 

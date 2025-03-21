@@ -194,11 +194,11 @@ describe("perp-amm (with configuration persistence)", () => {
         );
 
         await program.methods
-          .adminDeposit(depositAmount)
+          .directDeposit(depositAmount)
           .accountsStrict({
-            admin: admin.publicKey,
+            depositor: admin.publicKey,
             poolState,
-            adminTokenAccount: adminSolAccount,
+            depositorTokenAccount: adminSolAccount,
             vaultAccount: solVault,
             chainlinkProgram: chainlinkProgram,
             chainlinkFeed: chainlinkFeed,

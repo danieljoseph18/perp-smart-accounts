@@ -6,25 +6,23 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 #[derive(Accounts)]
-pub struct AdminDeposit<'info> {
-    #[account(mut)]
-    pub admin: Signer<'info>,
+pub struct DirectDeposit<'info> {
+    pub depositor: Signer<'info>,
 
     #[account(
         mut,
         seeds = [b"pool_state".as_ref()],
         bump,
-        constraint = (pool_state.admin == admin.key() || pool_state.authority == admin.key()) @ VaultError::Unauthorized
     )]
     pub pool_state: Account<'info, PoolState>,
 
     // Token account, e.g WSOL or USDC
     #[account(
         mut,
-        constraint = admin_token_account.mint == NATIVE_MINT.parse::<Pubkey>().unwrap() || 
-                    admin_token_account.mint == pool_state.usdc_mint
+        constraint = depositor_token_account.mint == NATIVE_MINT.parse::<Pubkey>().unwrap() || 
+                    depositor_token_account.mint == pool_state.usdc_mint
     )]
-    pub admin_token_account: Account<'info, TokenAccount>,
+    pub depositor_token_account: Account<'info, TokenAccount>,
 
     #[account(mut)]
     pub vault_account: Account<'info, TokenAccount>,
@@ -49,15 +47,19 @@ pub struct AdminDeposit<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_admin_deposit(ctx: Context<AdminDeposit>, amount: u64) -> Result<()> {
+/**
+ * @dev Direct deposit of WSOL or USDC into the pool.
+ * Receives no LP tokens in return, just boosts the pool's AUM.
+ */
+pub fn handler(ctx: Context<DirectDeposit>, amount: u64) -> Result<()> {
     let pool_state = &mut ctx.accounts.pool_state;
 
     let transfer_ctx = CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
         Transfer {
-            from: ctx.accounts.admin_token_account.to_account_info(),
+            from: ctx.accounts.depositor_token_account.to_account_info(),
             to: ctx.accounts.vault_account.to_account_info(),
-            authority: ctx.accounts.admin.to_account_info(),
+            authority: ctx.accounts.depositor.to_account_info(),
         },
     );
     token::transfer(transfer_ctx, amount)?;

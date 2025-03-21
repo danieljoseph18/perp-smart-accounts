@@ -1,7 +1,6 @@
-use anchor_lang::prelude::*;
 use crate::errors::MarginError;
 use crate::state::{MarginAccount, MarginVault};
-
+use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
 pub struct RequestWithdrawal<'info> {
@@ -29,18 +28,15 @@ pub struct RequestWithdrawal<'info> {
 
 // No check for margin amount, as positive PNL may increase this.
 // Margin amount is checked in execute_withdrawal.
-pub fn handler(
-    ctx: Context<RequestWithdrawal>,
-    sol_amount: u64,
-    usdc_amount: u64,
-) -> Result<()> {
+pub fn handler(ctx: Context<RequestWithdrawal>, sol_amount: u64, usdc_amount: u64) -> Result<()> {
     let margin_account = &mut ctx.accounts.margin_account;
     let clock = Clock::get()?;
 
     // Verify timelock has passed since last withdrawal request
     require!(
-        clock.unix_timestamp >= margin_account.last_withdrawal_request + 
-            ctx.accounts.margin_vault.withdrawal_timelock,
+        clock.unix_timestamp
+            >= margin_account.last_withdrawal_request
+                + ctx.accounts.margin_vault.withdrawal_timelock,
         MarginError::WithdrawalTimelockNotExpired
     );
 

@@ -1,6 +1,6 @@
 use crate::{
-    errors::VaultError, instructions::update_rewards::*, state::*, CHAINLINK_PROGRAM_ID,
-    DEVNET_SOL_PRICE_FEED, MAINNET_SOL_PRICE_FEED, NATIVE_MINT,
+    errors::VaultError, state::*, util::*, CHAINLINK_PROGRAM_ID, DEVNET_SOL_PRICE_FEED,
+    MAINNET_SOL_PRICE_FEED, NATIVE_MINT,
 };
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, MintTo, Token, TokenAccount, Transfer};
@@ -68,7 +68,7 @@ pub struct Deposit<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_deposit(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
+pub fn handler(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
     let pool_state = &mut ctx.accounts.pool_state;
     let user_state = &mut ctx.accounts.user_state;
     let clock = Clock::get()?;

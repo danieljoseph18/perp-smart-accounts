@@ -1,12 +1,10 @@
-use crate::instructions::update_rewards::update_rewards;
 use crate::state::*;
-use crate::{errors::VaultError, RewardsClaimed};
+use crate::{errors::VaultError, util::*, RewardsClaimed};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
 #[derive(Accounts)]
 pub struct ClaimRewards<'info> {
-    #[account(mut)]
     pub user: Signer<'info>,
 
     #[account(
@@ -46,7 +44,7 @@ pub struct ClaimRewards<'info> {
     pub lp_token_mint: Account<'info, Mint>,
 }
 
-pub fn handle_claim_rewards(ctx: Context<ClaimRewards>) -> Result<()> {
+pub fn handler(ctx: Context<ClaimRewards>) -> Result<()> {
     // Store validation values up front
     let now = Clock::get()?.unix_timestamp as u64;
     let reward_start_time = ctx.accounts.pool_state.reward_start_time;

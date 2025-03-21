@@ -440,7 +440,7 @@ describe("perp-amm (with configuration persistence)", () => {
     }
   });
 
-  describe("admin_deposit", () => {
+  describe("direct_deposit", () => {
     it("should allow admin to deposit WSOL to the SOL vault", async () => {
       // Get the current pool state to ensure we're using the correct values
       const poolStateAccount = await program.account.poolState.fetch(poolState);
@@ -472,11 +472,11 @@ describe("perp-amm (with configuration persistence)", () => {
 
       const depositAmount = new BN(1_000_000_000); // 1 SOL
       await program.methods
-        .adminDeposit(depositAmount)
+        .directDeposit(depositAmount)
         .accountsStrict({
-          admin: admin.publicKey,
+          depositor: admin.publicKey,
           poolState,
-          adminTokenAccount: adminSolAccount,
+          depositorTokenAccount: adminSolAccount,
           vaultAccount: poolStateAccount.solVault,
           chainlinkProgram: chainlinkProgram,
           chainlinkFeed: chainlinkFeed,
@@ -543,11 +543,11 @@ describe("perp-amm (with configuration persistence)", () => {
 
       // Admin deposit USDC
       await program.methods
-        .adminDeposit(depositAmount)
+        .directDeposit(depositAmount)
         .accountsStrict({
-          admin: admin.publicKey,
+          depositor: admin.publicKey,
           poolState,
-          adminTokenAccount: adminUsdcAccount,
+          depositorTokenAccount: adminUsdcAccount,
           vaultAccount: poolStateAccount.usdcVault,
           chainlinkProgram: chainlinkProgram,
           chainlinkFeed: chainlinkFeed,
@@ -617,11 +617,11 @@ describe("perp-amm (with configuration persistence)", () => {
         await provider.sendAndConfirm(wrapTx, [admin]);
 
         await program.methods
-          .adminDeposit(new BN(LAMPORTS_PER_SOL))
+          .directDeposit(new BN(LAMPORTS_PER_SOL))
           .accountsStrict({
-            admin: user1.publicKey,
+            depositor: user1.publicKey,
             poolState,
-            adminTokenAccount: user1SolAccount.address,
+            depositorTokenAccount: user1SolAccount.address,
             vaultAccount: poolStateAccount.solVault,
             chainlinkProgram: chainlinkProgram,
             chainlinkFeed: chainlinkFeed,

@@ -3,7 +3,6 @@ use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
 pub struct CloseUserState<'info> {
-    #[account(mut)]
     pub user: Signer<'info>,
 
     #[account(
@@ -25,6 +24,6 @@ pub struct CloseUserState<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_close_user_state(_ctx: Context<CloseUserState>) -> Result<()> {
+pub fn handler(_ctx: Context<CloseUserState>) -> Result<()> {
     Ok(())
 }

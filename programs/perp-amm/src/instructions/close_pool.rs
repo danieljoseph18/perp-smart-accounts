@@ -3,7 +3,6 @@ use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
 pub struct ClosePool<'info> {
-    #[account(mut)]
     pub admin: Signer<'info>,
 
     #[account(
@@ -18,7 +17,7 @@ pub struct ClosePool<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_close_pool(ctx: Context<ClosePool>) -> Result<()> {
+pub fn handler(ctx: Context<ClosePool>) -> Result<()> {
     // Verify the signer is the admin
     require_keys_eq!(
         ctx.accounts.admin.key(),
