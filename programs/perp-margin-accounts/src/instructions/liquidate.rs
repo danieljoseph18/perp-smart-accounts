@@ -65,7 +65,7 @@ pub struct LiquidateMarginAccount<'info> {
 }
 
 // No safety checks, so constrain caller.
-pub fn handle_liquidate_margin_account(
+pub fn handler(
     ctx: Context<LiquidateMarginAccount>,
 ) -> Result<()> {
     let margin_account = &mut ctx.accounts.margin_account;

@@ -19,6 +19,8 @@ import BN from "bn.js";
 import * as dotenv from "dotenv";
 import { initializeMarginProgram } from "./helpers/init-margin-program";
 import { wrapSol } from "./helpers/wrap-sol";
+import { setupAmmProgram } from "./helpers/init-amm-program";
+import { PerpAmm } from "../target/types/perp_amm";
 
 dotenv.config();
 
@@ -37,7 +39,9 @@ describe("perp-margin-accounts", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
-  const program = anchor.workspace
+  const ammProgram = anchor.workspace.PerpAmm as Program<PerpAmm>;
+
+  const marginProgram = anchor.workspace
     .PerpMarginAccounts as Program<PerpMarginAccounts>;
 
   // Use a fixed keypair for admin (for consistent testing)
@@ -51,6 +55,10 @@ describe("perp-margin-accounts", () => {
   let marginVault: PublicKey;
   let solVault: PublicKey;
   let usdcVault: PublicKey;
+  let lpTokenMint: PublicKey;
+
+  // Set up pool state
+  let poolState: PublicKey;
 
   // Set up token accounts
   let adminSolAccount: PublicKey;
@@ -60,13 +68,20 @@ describe("perp-margin-accounts", () => {
   let user2SolAccount: PublicKey;
   let user2UsdcAccount: PublicKey;
 
+  // User states
+  let user1State: PublicKey;
+  let user2State: PublicKey;
+
+  // User LP token accounts
+  let user1LpTokenAccount: PublicKey;
+  let user2LpTokenAccount: PublicKey;
+
   // User margin accounts
   let user1MarginAccount: PublicKey;
   let user2MarginAccount: PublicKey;
 
-  // Test parameters
-  const solDepositAmount = new BN(LAMPORTS_PER_SOL); // 1 SOL
-  const usdcDepositAmount = new BN(10_000_000); // 10 USDC (with 6 decimals)
+  let marginSolVault: PublicKey;
+  let marginUsdcVault: PublicKey;
 
   // Global configuration state
   let configInitialized = false;
@@ -74,44 +89,82 @@ describe("perp-margin-accounts", () => {
   before(async () => {
     console.log("=== Starting test setup ===");
 
-    // Set up the Margin program; this helper creates mints, vaults,
-    // marginVault, and admin token accounts.
-    const setup = await initializeMarginProgram(
+    // Set up the AMM program; this helper creates mints, vaults,
+    // poolState, and admin/user token accounts.
+    const setup = await setupAmmProgram(
       provider,
-      program,
-      NATIVE_MINT, // Use WSOL
-      null, // Let the helper create the USDC mint
+      ammProgram,
+      marginProgram,
       chainlinkProgram,
-      chainlinkFeed
+      chainlinkFeed,
+      admin,
+      user1,
+      user2
     );
 
+    console.log("Setup complete, retrieving configuration values...");
+
     // Retrieve configuration values from the setup helper.
-    marginVault = setup.marginVault;
-    solMint = NATIVE_MINT;
+    poolState = setup.poolState;
+    solMint = setup.solMint;
+    usdcMint = setup.usdcMint;
+    lpTokenMint = setup.lpTokenMint;
     solVault = setup.solVault;
     usdcVault = setup.usdcVault;
+    adminSolAccount = setup.adminSolAccount;
+    adminUsdcAccount = setup.adminUsdcAccount;
+    user1UsdcAccount = setup.user1UsdcAccount;
+    user2UsdcAccount = setup.user2UsdcAccount;
+    marginVault = setup.marginVault;
+    marginSolVault = setup.marginSolVault;
+    marginUsdcVault = setup.marginUsdcVault;
 
-    // Create USDC mint since it's not returned by setup
-    usdcMint = (await getAccount(provider.connection, usdcVault)).mint;
+    console.log("Margin vault:", marginVault.toString());
 
-    // Create token accounts for all users
-    adminSolAccount = (
+    // Create LP token accounts for users
+    user1LpTokenAccount = (
       await getOrCreateAssociatedTokenAccount(
         provider.connection,
         admin,
-        solMint,
-        admin.publicKey
+        lpTokenMint,
+        user1.publicKey
       )
     ).address;
 
-    adminUsdcAccount = (
+    user2LpTokenAccount = (
       await getOrCreateAssociatedTokenAccount(
         provider.connection,
         admin,
-        usdcMint,
-        admin.publicKey
+        lpTokenMint,
+        user2.publicKey
       )
     ).address;
+
+    // Derive user states
+    [user1State] = PublicKey.findProgramAddressSync(
+      [Buffer.from("user_state"), user1.publicKey.toBuffer()],
+      marginProgram.programId
+    );
+
+    [user2State] = PublicKey.findProgramAddressSync(
+      [Buffer.from("user_state"), user2.publicKey.toBuffer()],
+      marginProgram.programId
+    );
+
+    // Derive user margin accounts
+    [user1MarginAccount] = PublicKey.findProgramAddressSync(
+      [Buffer.from("margin_account"), user1.publicKey.toBuffer()],
+      marginProgram.programId
+    );
+
+    [user2MarginAccount] = PublicKey.findProgramAddressSync(
+      [Buffer.from("margin_account"), user2.publicKey.toBuffer()],
+      marginProgram.programId
+    );
+
+    configInitialized = true;
+
+    // Get user token accounts
 
     user1SolAccount = (
       await getOrCreateAssociatedTokenAccount(
@@ -149,56 +202,44 @@ describe("perp-margin-accounts", () => {
       )
     ).address;
 
-    // Mint USDC to user accounts
-    await mintTo(
-      provider.connection,
-      admin,
-      usdcMint,
-      user1UsdcAccount,
-      admin.publicKey,
-      100_000_000 // 100 USDC
-    );
+    console.log("User token accounts created");
 
-    await mintTo(
-      provider.connection,
-      admin,
-      usdcMint,
-      user2UsdcAccount,
-      admin.publicKey,
-      100_000_000 // 100 USDC
-    );
+    // Initialize user1 margin account
+    await marginProgram.methods
+      .depositMargin(new BN(0))
+      .accountsStrict({
+        marginAccount: user1MarginAccount,
+        marginVault: marginVault,
+        vaultTokenAccount: marginSolVault,
+        userTokenAccount: user1SolAccount,
+        owner: user1.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([user1])
+      .rpc();
 
-    // Wrap SOL for users
-    await wrapSol(
-      admin.publicKey,
-      user1SolAccount,
-      5 * LAMPORTS_PER_SOL,
-      provider,
-      admin
-    );
+    console.log("User1 margin account initialized");
 
-    await wrapSol(
-      admin.publicKey,
-      user2SolAccount,
-      5 * LAMPORTS_PER_SOL,
-      provider,
-      admin
-    );
+    // Initialize user2 margin account
+    await marginProgram.methods
+      .depositMargin(new BN(0))
+      .accountsStrict({
+        marginAccount: user2MarginAccount,
+        marginVault: marginVault,
+        vaultTokenAccount: marginUsdcVault,
+        userTokenAccount: user2UsdcAccount,
+        owner: user2.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([user2])
+      .rpc();
 
-    // Derive user margin accounts
-    [user1MarginAccount] = PublicKey.findProgramAddressSync(
-      [Buffer.from("margin_account"), user1.publicKey.toBuffer()],
-      program.programId
-    );
-
-    [user2MarginAccount] = PublicKey.findProgramAddressSync(
-      [Buffer.from("margin_account"), user2.publicKey.toBuffer()],
-      program.programId
-    );
+    console.log("User2 margin account initialized");
 
     configInitialized = true;
   });
-
   // Ensure configuration is initialized before each test.
   beforeEach(async () => {
     if (!configInitialized) {
@@ -216,7 +257,7 @@ describe("perp-margin-accounts", () => {
       );
 
       // Initialize user1 margin account with a zero deposit
-      await program.methods
+      await marginProgram.methods
         .depositMargin(new BN(0))
         .accountsStrict({
           marginAccount: user1MarginAccount,
@@ -232,7 +273,7 @@ describe("perp-margin-accounts", () => {
 
       // Get the margin account state after initialization
       const marginAccountInitialized =
-        await program.account.marginAccount.fetch(user1MarginAccount);
+        await marginProgram.account.marginAccount.fetch(user1MarginAccount);
 
       // Verify the margin account is initialized correctly
       assert.equal(
@@ -252,7 +293,7 @@ describe("perp-margin-accounts", () => {
       );
 
       // Deposit SOL
-      await program.methods
+      await marginProgram.methods
         .depositMargin(solDepositAmount)
         .accountsStrict({
           marginAccount: user1MarginAccount,
@@ -272,9 +313,8 @@ describe("perp-margin-accounts", () => {
         provider.connection,
         user1SolAccount
       );
-      const marginAccountAfter = await program.account.marginAccount.fetch(
-        user1MarginAccount
-      );
+      const marginAccountAfter =
+        await marginProgram.account.marginAccount.fetch(user1MarginAccount);
 
       // Verify state changes
       assert.equal(
@@ -309,7 +349,7 @@ describe("perp-margin-accounts", () => {
       );
 
       // Initialize user2 margin account with a zero deposit
-      await program.methods
+      await marginProgram.methods
         .depositMargin(new BN(0))
         .accountsStrict({
           marginAccount: user2MarginAccount,
@@ -324,7 +364,7 @@ describe("perp-margin-accounts", () => {
         .rpc();
 
       // Deposit USDC
-      await program.methods
+      await marginProgram.methods
         .depositMargin(usdcDepositAmount)
         .accountsStrict({
           marginAccount: user2MarginAccount,
@@ -344,9 +384,8 @@ describe("perp-margin-accounts", () => {
         provider.connection,
         user2UsdcAccount
       );
-      const marginAccountAfter = await program.account.marginAccount.fetch(
-        user2MarginAccount
-      );
+      const marginAccountAfter =
+        await marginProgram.account.marginAccount.fetch(user2MarginAccount);
 
       // Verify state changes
       assert.equal(
@@ -379,13 +418,12 @@ describe("perp-margin-accounts", () => {
         provider.connection,
         user1SolAccount
       );
-      const marginAccountBefore = await program.account.marginAccount.fetch(
-        user1MarginAccount
-      );
+      const marginAccountBefore =
+        await marginProgram.account.marginAccount.fetch(user1MarginAccount);
 
       // Deposit more SOL
       const additionalSolDeposit = new BN(LAMPORTS_PER_SOL / 2); // 0.5 SOL
-      await program.methods
+      await marginProgram.methods
         .depositMargin(additionalSolDeposit)
         .accountsStrict({
           marginAccount: user1MarginAccount,
@@ -405,9 +443,8 @@ describe("perp-margin-accounts", () => {
         provider.connection,
         user1SolAccount
       );
-      const marginAccountAfter = await program.account.marginAccount.fetch(
-        user1MarginAccount
-      );
+      const marginAccountAfter =
+        await marginProgram.account.marginAccount.fetch(user1MarginAccount);
 
       // Verify state changes
       assert.equal(
@@ -442,13 +479,12 @@ describe("perp-margin-accounts", () => {
         provider.connection,
         user2UsdcAccount
       );
-      const marginAccountBefore = await program.account.marginAccount.fetch(
-        user2MarginAccount
-      );
+      const marginAccountBefore =
+        await marginProgram.account.marginAccount.fetch(user2MarginAccount);
 
       // Deposit more USDC
       const additionalUsdcDeposit = new BN(5_000_000); // 5 USDC
-      await program.methods
+      await marginProgram.methods
         .depositMargin(additionalUsdcDeposit)
         .accountsStrict({
           marginAccount: user2MarginAccount,
@@ -468,9 +504,8 @@ describe("perp-margin-accounts", () => {
         provider.connection,
         user2UsdcAccount
       );
-      const marginAccountAfter = await program.account.marginAccount.fetch(
-        user2MarginAccount
-      );
+      const marginAccountAfter =
+        await marginProgram.account.marginAccount.fetch(user2MarginAccount);
 
       // Verify state changes
       assert.equal(
@@ -500,7 +535,7 @@ describe("perp-margin-accounts", () => {
 
     it("should fail to deposit if amount is zero", async () => {
       try {
-        await program.methods
+        await marginProgram.methods
           .depositMargin(new BN(0))
           .accountsStrict({
             marginAccount: user1MarginAccount,
@@ -527,7 +562,7 @@ describe("perp-margin-accounts", () => {
     it("should fail to deposit if unauthorized user tries to deposit", async () => {
       try {
         // Try to deposit to user2's account using user1's signature
-        await program.methods
+        await marginProgram.methods
           .depositMargin(new BN(1_000_000))
           .accountsStrict({
             marginAccount: user2MarginAccount,
@@ -559,7 +594,7 @@ describe("perp-margin-accounts", () => {
       const excessAmount = new BN(userSolBalance.amount.toString()).addn(1); // Balance + 1
 
       try {
-        await program.methods
+        await marginProgram.methods
           .depositMargin(excessAmount)
           .accountsStrict({
             marginAccount: user1MarginAccount,

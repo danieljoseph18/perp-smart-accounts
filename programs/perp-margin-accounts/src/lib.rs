@@ -3,6 +3,7 @@ use anchor_lang::prelude::*;
 pub mod errors;
 pub mod instructions;
 pub mod state;
+pub mod util;
 
 use instructions::*;
 
@@ -13,21 +14,21 @@ pub mod perp_margin_accounts {
     use super::*;
 
     pub fn initialize(
-        ctx: Context<Initialize>, 
+        ctx: Context<Initialize>,
         withdrawal_timelock: i64,
         chainlink_program: Pubkey,
         chainlink_feed: Pubkey,
     ) -> Result<()> {
-        instructions::initialize::handle_initialize(
-            ctx, 
-            withdrawal_timelock, 
-            chainlink_program, 
-            chainlink_feed
+        instructions::initialize::handler(
+            ctx,
+            withdrawal_timelock,
+            chainlink_program,
+            chainlink_feed,
         )
     }
 
     pub fn deposit_margin(ctx: Context<DepositMargin>, amount: u64) -> Result<()> {
-        instructions::deposit::handle_deposit_margin(ctx, amount)
+        instructions::deposit::handler(ctx, amount)
     }
 
     pub fn request_withdrawal(
@@ -35,7 +36,7 @@ pub mod perp_margin_accounts {
         sol_amount: u64,
         usdc_amount: u64,
     ) -> Result<()> {
-        instructions::withdraw::request_withdrawal(ctx, sol_amount, usdc_amount)
+        instructions::request_withdraw::handler(ctx, sol_amount, usdc_amount)
     }
 
     pub fn execute_withdrawal(
@@ -46,7 +47,7 @@ pub mod perp_margin_accounts {
         sol_fees_owed: u64,
         usdc_fees_owed: u64,
     ) -> Result<()> {
-        instructions::withdraw::execute_withdrawal(
+        instructions::execute_withdraw::handler(
             ctx,
             pnl_update,
             locked_sol,
@@ -57,15 +58,15 @@ pub mod perp_margin_accounts {
     }
 
     pub fn liquidate_margin_account(ctx: Context<LiquidateMarginAccount>) -> Result<()> {
-        instructions::liquidate::handle_liquidate_margin_account(ctx)
+        instructions::liquidate::handler(ctx)
     }
 
     pub fn cancel_withdrawal(ctx: Context<CancelWithdrawal>) -> Result<()> {
-        instructions::withdraw::cancel_withdrawal(ctx)
+        instructions::cancel_withdraw::handler(ctx)
     }
 
     pub fn claim_fees(ctx: Context<ClaimFees>) -> Result<()> {
-        instructions::claim_fees::handle_claim_fees(ctx)
+        instructions::claim_fees::handler(ctx)
     }
 
     pub fn update_chainlink_addresses(
@@ -73,10 +74,6 @@ pub mod perp_margin_accounts {
         chainlink_program: Pubkey,
         chainlink_feed: Pubkey,
     ) -> Result<()> {
-        instructions::update_chainlink_addresses::handle_update_chainlink_addresses(
-            ctx,
-            chainlink_program,
-            chainlink_feed
-        )
+        instructions::update_chainlink_addresses::handler(ctx, chainlink_program, chainlink_feed)
     }
 }

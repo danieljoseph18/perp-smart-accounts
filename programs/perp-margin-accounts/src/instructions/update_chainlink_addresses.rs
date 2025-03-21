@@ -1,5 +1,5 @@
-use crate::state::MarginVault;
 use crate::errors::MarginError;
+use crate::state::MarginVault;
 use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
@@ -18,17 +18,17 @@ pub struct UpdateChainlinkAddresses<'info> {
     pub authority: Signer<'info>,
 }
 
-pub fn handle_update_chainlink_addresses(
+pub fn handler(
     ctx: Context<UpdateChainlinkAddresses>,
     chainlink_program: Pubkey,
     chainlink_feed: Pubkey,
 ) -> Result<()> {
     let margin_vault = &mut ctx.accounts.margin_vault;
-    
+
     // Update the chainlink addresses
     margin_vault.chainlink_program = chainlink_program;
     margin_vault.chainlink_feed = chainlink_feed;
-    
+
     msg!("Chainlink addresses updated successfully");
     Ok(())
 }

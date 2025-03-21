@@ -1497,6 +1497,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
+ "chainlink_solana",
  "perp-amm",
  "solana-program 2.2.1",
 ]

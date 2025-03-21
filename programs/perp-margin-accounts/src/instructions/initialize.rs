@@ -31,7 +31,7 @@ pub struct Initialize<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-pub fn handle_initialize(
+pub fn handler(
     ctx: Context<Initialize>,
     withdrawal_timelock: i64,
     chainlink_program: Pubkey,

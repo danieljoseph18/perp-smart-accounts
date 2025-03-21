@@ -41,7 +41,7 @@ pub struct DepositMargin<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_deposit_margin(
+pub fn handler(
     ctx: Context<DepositMargin>,
     amount: u64,
 ) -> Result<()> {

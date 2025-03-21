@@ -43,4 +43,7 @@ pub enum MarginError {
 
     #[msg("Insufficient withdrawable margin")]
     InsufficientWithdrawableMargin,
+
+    #[msg("Position is liquidatable")]
+    LiquidatablePosition,
 }
