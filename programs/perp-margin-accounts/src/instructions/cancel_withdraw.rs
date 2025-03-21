@@ -8,8 +8,7 @@ pub struct CancelWithdrawal<'info> {
         mut,
         seeds = [b"margin_account", margin_account.owner.as_ref()],
         bump = margin_account.bump,
-        constraint = margin_account.pending_sol_withdrawal > 0 || 
-                    margin_account.pending_usdc_withdrawal > 0 @ MarginError::NoPendingWithdrawal
+        constraint = margin_account.pending_sol_withdrawal > 0 || margin_account.pending_usdc_withdrawal > 0 @ MarginError::NoPendingWithdrawal
     )]
     pub margin_account: Account<'info, MarginAccount>,
 
@@ -20,8 +19,7 @@ pub struct CancelWithdrawal<'info> {
     pub margin_vault: Account<'info, MarginVault>,
 
     #[account(
-        constraint = authority.key() == margin_account.owner || 
-                    authority.key() == margin_vault.authority @ MarginError::UnauthorizedExecution
+        constraint = authority.key() == margin_account.owner || authority.key() == margin_vault.authority @ MarginError::UnauthorizedExecution
     )]
     pub authority: Signer<'info>,
 }

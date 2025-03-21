@@ -22,8 +22,7 @@ pub struct LiquidateMarginAccount<'info> {
 
     #[account(
         mut,
-        constraint = margin_vault_token_account.key() == margin_vault.margin_sol_vault || 
-                    margin_vault_token_account.key() == margin_vault.margin_usdc_vault
+        constraint = margin_vault_token_account.key() == margin_vault.margin_sol_vault || margin_vault_token_account.key() == margin_vault.margin_usdc_vault
     )]
     pub margin_vault_token_account: Account<'info, TokenAccount>,
 
@@ -34,8 +33,7 @@ pub struct LiquidateMarginAccount<'info> {
     /// The liquidity pool's vault account that matches the token being withdrawn
     #[account(
         mut,
-        constraint = pool_vault_account.key() == pool_state.sol_vault || 
-                    pool_vault_account.key() == pool_state.usdc_vault
+        constraint = pool_vault_account.key() == pool_state.sol_vault || pool_vault_account.key() == pool_state.usdc_vault
     )]
     pub pool_vault_account: Account<'info, TokenAccount>,
 

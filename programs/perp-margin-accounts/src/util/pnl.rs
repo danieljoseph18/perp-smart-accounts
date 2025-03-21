@@ -74,7 +74,6 @@ fn process_positive_pnl(
                 token_program: ctx.accounts.token_program.to_account_info(),
                 system_program: ctx.accounts.system_program.to_account_info(),
             };
-
             let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
 
             admin_withdraw(cpi_ctx, pnl_sol_native)?;
@@ -103,7 +102,6 @@ fn process_positive_pnl(
                 token_program: ctx.accounts.token_program.to_account_info(),
                 system_program: ctx.accounts.system_program.to_account_info(),
             };
-
             let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
 
             admin_withdraw(cpi_ctx, pnl_usdc_native)?;

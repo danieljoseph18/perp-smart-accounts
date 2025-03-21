@@ -13,8 +13,7 @@ pub struct ExecuteWithdrawal<'info> {
         mut,
         seeds = [b"margin_account", margin_account.owner.as_ref()],
         bump = margin_account.bump,
-        constraint = margin_account.pending_sol_withdrawal > 0 || 
-                    margin_account.pending_usdc_withdrawal > 0 @ MarginError::NoPendingWithdrawal
+        constraint = margin_account.pending_sol_withdrawal > 0 || margin_account.pending_usdc_withdrawal > 0 @ MarginError::NoPendingWithdrawal
     )]
     pub margin_account: Account<'info, MarginAccount>,
 
@@ -60,8 +59,7 @@ pub struct ExecuteWithdrawal<'info> {
     /// The liquidity pool's vault account that matches the token being withdrawn
     #[account(
         mut,
-        constraint = pool_vault_account.key() == pool_state.sol_vault || 
-                    pool_vault_account.key() == pool_state.usdc_vault
+        constraint = pool_vault_account.key() == pool_state.sol_vault || pool_vault_account.key() == pool_state.usdc_vault
     )]
     pub pool_vault_account: Account<'info, TokenAccount>,
 

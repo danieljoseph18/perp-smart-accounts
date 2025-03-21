@@ -23,8 +23,7 @@ pub struct DepositMargin<'info> {
 
     #[account(
         mut,
-        constraint = vault_token_account.key() == margin_vault.margin_sol_vault || 
-                    vault_token_account.key() == margin_vault.margin_usdc_vault
+        constraint = vault_token_account.key() == margin_vault.margin_sol_vault || vault_token_account.key() == margin_vault.margin_usdc_vault
     )]
     pub vault_token_account: Account<'info, TokenAccount>,
 

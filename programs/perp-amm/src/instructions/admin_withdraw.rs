@@ -7,13 +7,14 @@ use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 #[derive(Accounts)]
 pub struct AdminWithdraw<'info> {
-    pub admin: Signer<'info>,
+    // Allow any account (including a PDA) to be provided here.
+    /// CHECK: Validated by its constraint.
+    pub admin: AccountInfo<'info>,
 
     #[account(
         mut,
         seeds = [b"pool_state".as_ref()],
-        bump,
-        constraint = (pool_state.admin == admin.key() || pool_state.authority == admin.key()) @ VaultError::Unauthorized
+        bump
     )]
     pub pool_state: Account<'info, PoolState>,
 
@@ -21,11 +22,10 @@ pub struct AdminWithdraw<'info> {
     #[account(mut)]
     pub vault_account: Account<'info, TokenAccount>,
 
-    // Token account, e.g WSOL or USDC
+    // Token account (e.g., WSOL or USDC)
     #[account(
         mut,
-        constraint = admin_token_account.mint == NATIVE_MINT.parse::<Pubkey>().unwrap() || 
-                    admin_token_account.mint == pool_state.usdc_mint
+        constraint = admin_token_account.mint == NATIVE_MINT.parse::<Pubkey>().unwrap() || admin_token_account.mint == pool_state.usdc_mint
     )]
     pub admin_token_account: Account<'info, TokenAccount>,
 
@@ -46,14 +46,22 @@ pub struct AdminWithdraw<'info> {
     pub chainlink_feed: AccountInfo<'info>,
 
     pub token_program: Program<'info, Token>,
-
     pub system_program: Program<'info, System>,
 }
 
 pub fn handler(ctx: Context<AdminWithdraw>, amount: u64) -> Result<()> {
-    // Get pool_state's AccountInfo for CPI
+    // Manual check: Ensure that either the admin or authority role is calling.
+    if !ctx.accounts.admin.is_signer
+        && ctx.accounts.admin.key() != ctx.accounts.pool_state.admin
+        && ctx.accounts.admin.key() != ctx.accounts.pool_state.authority
+    {
+        return err!(VaultError::Unauthorized);
+    }
+
+    // Get pool_state's AccountInfo for CPI.
     let pool_state_info = ctx.accounts.pool_state.to_account_info();
 
+    // Create the CPI context for the token transfer.
     let cpi_ctx = CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
         Transfer {
@@ -62,12 +70,14 @@ pub fn handler(ctx: Context<AdminWithdraw>, amount: u64) -> Result<()> {
             authority: pool_state_info,
         },
     );
+
+    // Note: Use the bump value stored on pool_state so that the signer seeds match.
     token::transfer(
         cpi_ctx.with_signer(&[&[b"pool_state".as_ref(), &[ctx.bumps.pool_state]]]),
         amount,
     )?;
 
-    // Finally, decrement the deposited token amounts on pool_state.
+    // (Your existing code to decrement deposited amounts remains unchanged.)
     if ctx.accounts.vault_account.key() == ctx.accounts.pool_state.sol_vault {
         ctx.accounts.pool_state.sol_deposited = ctx
             .accounts

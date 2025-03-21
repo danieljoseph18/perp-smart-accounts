@@ -1300,5 +1300,134 @@ describe("perp-margin-accounts", () => {
         "Pending SOL withdrawal should be cleared"
       );
     });
+
+    it("should pay out positive PNL exceeding initial deposit", async () => {
+      // Ensure the margin account for user1 is funded.
+      // If the current SOL balance is less than our expected deposit, deposit more.
+      let marginAccountBefore = await marginProgram.account.marginAccount.fetch(
+        user1MarginAccount
+      );
+      if (new BN(marginAccountBefore.solBalance).lt(solDepositAmount)) {
+        // Wrap and deposit SOL into user1’s margin account
+        await wrapSol(
+          user1.publicKey,
+          user1SolAccount,
+          solDepositAmount.toNumber(),
+          provider,
+          user1
+        );
+        await marginProgram.methods
+          .depositMargin(solDepositAmount)
+          .accountsStrict({
+            marginAccount: user1MarginAccount,
+            marginVault: marginVault,
+            vaultTokenAccount: marginSolVault,
+            userTokenAccount: user1SolAccount,
+            owner: user1.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([user1])
+          .rpc();
+
+        marginAccountBefore = await marginProgram.account.marginAccount.fetch(
+          user1MarginAccount
+        );
+      }
+
+      // Record the user's initial wrapped SOL balance.
+      const initialUserSol = await getAccount(
+        provider.connection,
+        user1SolAccount
+      );
+      const initialUserBalance = initialUserSol.amount;
+
+      // Simulate a positive PNL profit.
+      // For example, if the user deposited 0.1 SOL and now earns an extra 0.2 SOL.
+      // (Recall LAMPORTS_PER_SOL is 1e9; adjust numbers if needed.)
+      const pnlProfit = new BN(0.2 * LAMPORTS_PER_SOL);
+
+      // The withdrawal amount is the current deposit (marginAccount.solBalance) plus the profit.
+      const withdrawalAmount = new BN(marginAccountBefore.solBalance).add(
+        pnlProfit
+      );
+
+      // Request withdrawal for the full amount (deposit + profit).
+      await marginProgram.methods
+        .requestWithdrawal(withdrawalAmount, new BN(0))
+        .accountsStrict({
+          marginAccount: user1MarginAccount,
+          marginVault: marginVault,
+          owner: user1.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([user1])
+        .rpc();
+
+      // Wait for the withdrawal timelock to expire.
+      await new Promise((resolve) =>
+        setTimeout(resolve, (withdrawalTimelock + 1) * 1000)
+      );
+
+      // Execute the withdrawal and provide the positive pnl update.
+      // Here we pass:
+      //   pnl_update: pnlProfit (a positive value),
+      //   locked funds: 0,
+      //   fees: 0.
+      await marginProgram.methods
+        .executeWithdrawal(
+          pnlProfit, // positive pnl update
+          new BN(0), // locked_sol = 0
+          new BN(0), // locked_usdc = 0
+          new BN(0), // sol_fees_owed = 0
+          new BN(0) // usdc_fees_owed = 0
+        )
+        .accountsStrict({
+          marginAccount: user1MarginAccount,
+          marginVault: marginVault,
+          marginSolVault: marginSolVault,
+          marginUsdcVault: marginUsdcVault,
+          userSolAccount: user1SolAccount,
+          userUsdcAccount: user1UsdcAccount,
+          poolState: poolState,
+          poolVaultAccount: solVault, // using the SOL vault for SOL withdrawal
+          chainlinkProgram: chainlinkProgram,
+          chainlinkFeed: chainlinkFeed,
+          authority: admin.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          liquidityPoolProgram: ammProgram.programId,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([admin])
+        .rpc();
+
+      // After execution, verify that the user's SOL token account increased by the full withdrawal amount.
+      const finalUserSol = await getAccount(
+        provider.connection,
+        user1SolAccount
+      );
+      const finalUserBalance = finalUserSol.amount;
+      const received = finalUserBalance - initialUserBalance;
+
+      assert.equal(
+        received.toString(),
+        withdrawalAmount.toString(),
+        "User should receive deposit plus positive PNL profit in SOL"
+      );
+
+      // Finally, verify that the margin account pending withdrawal and SOL balance have been reset.
+      const marginAccountAfter =
+        await marginProgram.account.marginAccount.fetch(user1MarginAccount);
+      assert.equal(
+        marginAccountAfter.pendingSolWithdrawal.toString(),
+        "0",
+        "Pending SOL withdrawal should be zero after successful withdrawal"
+      );
+      assert.equal(
+        marginAccountAfter.solBalance.toString(),
+        "0",
+        "Margin account SOL balance should be zero after full withdrawal"
+      );
+    });
   });
 });

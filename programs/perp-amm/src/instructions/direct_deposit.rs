@@ -19,8 +19,7 @@ pub struct DirectDeposit<'info> {
     // Token account, e.g WSOL or USDC
     #[account(
         mut,
-        constraint = depositor_token_account.mint == NATIVE_MINT.parse::<Pubkey>().unwrap() || 
-                    depositor_token_account.mint == pool_state.usdc_mint
+        constraint = depositor_token_account.mint == NATIVE_MINT.parse::<Pubkey>().unwrap() || depositor_token_account.mint == pool_state.usdc_mint
     )]
     pub depositor_token_account: Account<'info, TokenAccount>,
 

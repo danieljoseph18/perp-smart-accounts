@@ -9,8 +9,7 @@ pub struct RequestWithdrawal<'info> {
         seeds = [b"margin_account", owner.key().as_ref()],
         bump = margin_account.bump,
         constraint = margin_account.owner == owner.key() @ MarginError::UnauthorizedAccount,
-        constraint = margin_account.pending_sol_withdrawal == 0 && 
-                    margin_account.pending_usdc_withdrawal == 0 @ MarginError::ExistingWithdrawalRequest
+        constraint = margin_account.pending_sol_withdrawal == 0 && margin_account.pending_usdc_withdrawal == 0 @ MarginError::ExistingWithdrawalRequest
     )]
     pub margin_account: Account<'info, MarginAccount>,
 
@@ -37,11 +36,12 @@ pub fn handler(ctx: Context<RequestWithdrawal>, sol_amount: u64, usdc_amount: u6
         return Err(MarginError::ExistingWithdrawalRequest.into());
     }
 
-    // Then, if a previous request was made (and subsequently executed or cancelled) you 
+    // Then, if a previous request was made (and subsequently executed or cancelled) you
     // might require that a new request may only be made after the timelock has passed.
     require!(
-        clock.unix_timestamp >= margin_account.last_withdrawal_request
-            + ctx.accounts.margin_vault.withdrawal_timelock,
+        clock.unix_timestamp
+            >= margin_account.last_withdrawal_request
+                + ctx.accounts.margin_vault.withdrawal_timelock,
         MarginError::WithdrawalTimelockNotExpired
     );
 
@@ -51,4 +51,3 @@ pub fn handler(ctx: Context<RequestWithdrawal>, sol_amount: u64, usdc_amount: u6
 
     Ok(())
 }
-

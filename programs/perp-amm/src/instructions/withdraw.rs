@@ -35,8 +35,7 @@ pub struct Withdraw<'info> {
 
     #[account(
         mut,
-        constraint = vault_account.key() == pool_state.sol_vault 
-            || vault_account.key() == pool_state.usdc_vault
+        constraint = vault_account.key() == pool_state.sol_vault || vault_account.key() == pool_state.usdc_vault
     )]
     pub vault_account: Account<'info, TokenAccount>,
 
