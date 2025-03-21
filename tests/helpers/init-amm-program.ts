@@ -374,7 +374,8 @@ export async function setupAmmProgram(
       solMint,
       usdcMint,
       chainlinkProgram,
-      chainlinkFeed
+      chainlinkFeed,
+      admin
     )) as any;
 
     marginSolVault = marginInit.marginSolVault;

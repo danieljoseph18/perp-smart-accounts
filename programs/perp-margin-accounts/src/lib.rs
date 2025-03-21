@@ -68,12 +68,4 @@ pub mod perp_margin_accounts {
     pub fn claim_fees(ctx: Context<ClaimFees>) -> Result<()> {
         instructions::claim_fees::handler(ctx)
     }
-
-    pub fn update_chainlink_addresses(
-        ctx: Context<UpdateChainlinkAddresses>,
-        chainlink_program: Pubkey,
-        chainlink_feed: Pubkey,
-    ) -> Result<()> {
-        instructions::update_chainlink_addresses::handler(ctx, chainlink_program, chainlink_feed)
-    }
 }

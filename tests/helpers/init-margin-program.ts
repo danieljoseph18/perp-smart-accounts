@@ -15,7 +15,8 @@ export async function initializeMarginProgram(
   solMint: PublicKey,
   usdcMint: PublicKey,
   chainlinkProgram: PublicKey,
-  chainlinkFeed: PublicKey
+  chainlinkFeed: PublicKey,
+  admin: anchor.web3.Keypair
 ) {
   console.log("\n=== Initializing Margin Program ===");
 
@@ -51,7 +52,7 @@ export async function initializeMarginProgram(
     // Create new token vaults with marginVault as owner
     const solVaultAccount = await getOrCreateAssociatedTokenAccount(
       provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
+      admin,
       solMint,
       marginVault,
       true
@@ -64,7 +65,7 @@ export async function initializeMarginProgram(
 
     const usdcVaultAccount = await getOrCreateAssociatedTokenAccount(
       provider.connection,
-      (provider.wallet as anchor.Wallet).payer,
+      admin,
       usdcMint,
       marginVault,
       true
@@ -83,7 +84,7 @@ export async function initializeMarginProgram(
         chainlinkFeed
       )
       .accountsStrict({
-        authority: provider.wallet.publicKey,
+        authority: admin.publicKey,
         marginVault,
         marginSolVault: solVaultAccount.address,
         marginUsdcVault: usdcVaultAccount.address,
@@ -91,6 +92,7 @@ export async function initializeMarginProgram(
         tokenProgram: TOKEN_PROGRAM_ID,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY,
       })
+      .signers([admin])
       .rpc();
 
     console.log("✓ Margin program initialized successfully!");
