@@ -12,12 +12,10 @@ import {
   TOKEN_PROGRAM_ID,
   getOrCreateAssociatedTokenAccount,
   getAccount,
-  mintTo,
 } from "@solana/spl-token";
 import { assert } from "chai";
 import BN from "bn.js";
 import * as dotenv from "dotenv";
-import { initializeMarginProgram } from "./helpers/init-margin-program";
 import { setupAmmProgram } from "./helpers/init-amm-program";
 import { wrapSol } from "./helpers/wrap-sol";
 
@@ -87,7 +85,7 @@ describe("perp-margin-accounts", () => {
   const usdcDepositAmount = new BN(10_000_000); // 10 USDC (with 6 decimals)
 
   // Test parameters
-  const withdrawalTimelock = 5 * 60; // 5 minutes in seconds
+  const withdrawalTimelock = 1; // 1 seconds
 
   const initialSolDeposit = new BN(1000);
   const initialUsdcDeposit = new BN(1000);

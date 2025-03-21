@@ -86,7 +86,7 @@ describe("perp-margin-accounts", () => {
   const usdcDepositAmount = new BN(10_000_000); // 10 USDC (with 6 decimals)
 
   // Test parameters
-  const withdrawalTimelock = 5 * 60; // 5 minutes in seconds
+  const withdrawalTimelock = 1; // 1 seconds
 
   // Global configuration state
   let configInitialized = false;

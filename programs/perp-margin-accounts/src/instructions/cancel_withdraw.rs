@@ -15,13 +15,13 @@ pub struct CancelWithdrawal<'info> {
 
     #[account(
         seeds = [b"margin_vault"],
-        bump = margin_vault.bump,
-        constraint = authority.key() == margin_vault.authority @ MarginError::InvalidAuthority
+        bump = margin_vault.bump
     )]
     pub margin_vault: Account<'info, MarginVault>,
 
     #[account(
-        constraint = authority.key() == margin_vault.authority @ MarginError::UnauthorizedExecution
+        constraint = authority.key() == margin_account.owner || 
+                    authority.key() == margin_vault.authority @ MarginError::UnauthorizedExecution
     )]
     pub authority: Signer<'info>,
 }

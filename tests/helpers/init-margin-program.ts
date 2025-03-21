@@ -7,7 +7,7 @@ import {
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 
-const WITHDRAWAL_TIMELOCK = 5 * 60; // 5 minutes in seconds
+const WITHDRAWAL_TIMELOCK = 1; // 1 seconds
 
 export async function initializeMarginProgram(
   provider: anchor.AnchorProvider,

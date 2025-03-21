@@ -32,11 +32,16 @@ pub fn handler(ctx: Context<RequestWithdrawal>, sol_amount: u64, usdc_amount: u6
     let margin_account = &mut ctx.accounts.margin_account;
     let clock = Clock::get()?;
 
-    // Verify timelock has passed since last withdrawal request
+    // First: if a withdrawal is already pending, reject immediately.
+    if margin_account.pending_sol_withdrawal > 0 || margin_account.pending_usdc_withdrawal > 0 {
+        return Err(MarginError::ExistingWithdrawalRequest.into());
+    }
+
+    // Then, if a previous request was made (and subsequently executed or cancelled) you 
+    // might require that a new request may only be made after the timelock has passed.
     require!(
-        clock.unix_timestamp
-            >= margin_account.last_withdrawal_request
-                + ctx.accounts.margin_vault.withdrawal_timelock,
+        clock.unix_timestamp >= margin_account.last_withdrawal_request
+            + ctx.accounts.margin_vault.withdrawal_timelock,
         MarginError::WithdrawalTimelockNotExpired
     );
 
@@ -46,3 +51,4 @@ pub fn handler(ctx: Context<RequestWithdrawal>, sol_amount: u64, usdc_amount: u6
 
     Ok(())
 }
+

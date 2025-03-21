@@ -22,7 +22,7 @@ const CHAINLINK_SOL_FEED = process.env.IS_DEVNET
   ? new PublicKey("99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR")
   : new PublicKey("CH31Xns5z3M1cTAbKW34jcxPPciazARpijcHj9rxtemt");
 
-const WITHDRAWAL_TIMELOCK = 5 * 60; // 5 minutes in seconds
+const WITHDRAWAL_TIMELOCK = 1; // 1 seconds
 
 async function initializeMarginProgram(
   provider: anchor.AnchorProvider,
