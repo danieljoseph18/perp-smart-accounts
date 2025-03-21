@@ -52,15 +52,15 @@ pub struct ExecuteWithdrawal<'info> {
 
     #[account(
         mut,
-        constraint = sol_vault.key() == margin_vault.sol_vault
+        constraint = margin_sol_vault.key() == margin_vault.margin_sol_vault
     )]
-    pub sol_vault: Account<'info, TokenAccount>,
+    pub margin_sol_vault: Account<'info, TokenAccount>,
 
     #[account(
         mut,
-        constraint = usdc_vault.key() == margin_vault.usdc_vault
+        constraint = margin_usdc_vault.key() == margin_vault.margin_usdc_vault
     )]
-    pub usdc_vault: Account<'info, TokenAccount>,
+    pub margin_usdc_vault: Account<'info, TokenAccount>,
 
     #[account(
         mut,
@@ -333,8 +333,8 @@ fn process_positive_pnl(
         let cpi_accounts = perp_amm::cpi::accounts::AdminWithdraw {
             admin: ctx.accounts.authority.to_account_info(),
             pool_state: ctx.accounts.pool_state.to_account_info(),
-            vault_account: ctx.accounts.sol_vault.to_account_info(),
-            admin_token_account: ctx.accounts.sol_vault.to_account_info(),
+            vault_account: ctx.accounts.margin_sol_vault.to_account_info(),
+            admin_token_account: ctx.accounts.margin_sol_vault.to_account_info(),
             chainlink_program: ctx.accounts.chainlink_program.to_account_info(),
             chainlink_feed: ctx.accounts.chainlink_feed.to_account_info(),
             token_program: ctx.accounts.token_program.to_account_info(),
@@ -357,8 +357,8 @@ fn process_positive_pnl(
         let cpi_accounts = perp_amm::cpi::accounts::AdminWithdraw {
             admin: ctx.accounts.authority.to_account_info(),
             pool_state: ctx.accounts.pool_state.to_account_info(),
-            vault_account: ctx.accounts.usdc_vault.to_account_info(),
-            admin_token_account: ctx.accounts.usdc_vault.to_account_info(),
+            vault_account: ctx.accounts.margin_usdc_vault.to_account_info(),
+            admin_token_account: ctx.accounts.margin_usdc_vault.to_account_info(),
             chainlink_program: ctx.accounts.chainlink_program.to_account_info(),
             chainlink_feed: ctx.accounts.chainlink_feed.to_account_info(),
             token_program: ctx.accounts.token_program.to_account_info(),
@@ -404,8 +404,8 @@ fn process_negative_pnl(
         let cpi_accounts = perp_amm::cpi::accounts::AdminDeposit {
             admin: ctx.accounts.authority.to_account_info(),
             pool_state: ctx.accounts.pool_state.to_account_info(),
-            admin_token_account: ctx.accounts.sol_vault.to_account_info(),
-            vault_account: ctx.accounts.sol_vault.to_account_info(),
+            admin_token_account: ctx.accounts.margin_sol_vault.to_account_info(),
+            vault_account: ctx.accounts.margin_sol_vault.to_account_info(),
             chainlink_program: ctx.accounts.chainlink_program.to_account_info(),
             chainlink_feed: ctx.accounts.chainlink_feed.to_account_info(),
             token_program: ctx.accounts.token_program.to_account_info(),
@@ -421,8 +421,8 @@ fn process_negative_pnl(
         let cpi_accounts = perp_amm::cpi::accounts::AdminDeposit {
             admin: ctx.accounts.authority.to_account_info(),
             pool_state: ctx.accounts.pool_state.to_account_info(),
-            admin_token_account: ctx.accounts.usdc_vault.to_account_info(),
-            vault_account: ctx.accounts.usdc_vault.to_account_info(),
+            admin_token_account: ctx.accounts.margin_usdc_vault.to_account_info(),
+            vault_account: ctx.accounts.margin_usdc_vault.to_account_info(),
             chainlink_program: ctx.accounts.chainlink_program.to_account_info(),
             chainlink_feed: ctx.accounts.chainlink_feed.to_account_info(),
             token_program: ctx.accounts.token_program.to_account_info(),
@@ -450,7 +450,7 @@ fn process_withdrawals(ctx: &mut Context<ExecuteWithdrawal>) -> Result<()> {
         let signer = &[&seeds[..]];
 
         let cpi_accounts = Transfer {
-            from: ctx.accounts.sol_vault.to_account_info(),
+            from: ctx.accounts.margin_sol_vault.to_account_info(),
             to: ctx.accounts.user_sol_account.to_account_info(),
             authority: ctx.accounts.margin_vault.to_account_info(),
         };
@@ -473,7 +473,7 @@ fn process_withdrawals(ctx: &mut Context<ExecuteWithdrawal>) -> Result<()> {
         let signer = &[&seeds[..]];
 
         let cpi_accounts = Transfer {
-            from: ctx.accounts.usdc_vault.to_account_info(),
+            from: ctx.accounts.margin_usdc_vault.to_account_info(),
             to: ctx.accounts.user_usdc_account.to_account_info(),
             authority: ctx.accounts.margin_vault.to_account_info(),
         };

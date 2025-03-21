@@ -23,8 +23,8 @@ pub struct DepositMargin<'info> {
 
     #[account(
         mut,
-        constraint = vault_token_account.key() == margin_vault.sol_vault || 
-                    vault_token_account.key() == margin_vault.usdc_vault
+        constraint = vault_token_account.key() == margin_vault.margin_sol_vault || 
+                    vault_token_account.key() == margin_vault.margin_usdc_vault
     )]
     pub vault_token_account: Account<'info, TokenAccount>,
 
@@ -66,7 +66,7 @@ pub fn handle_deposit_margin(
     token::transfer(cpi_ctx, amount)?;
 
     // Update margin account balance
-    if ctx.accounts.vault_token_account.key() == ctx.accounts.margin_vault.sol_vault {
+    if ctx.accounts.vault_token_account.key() == ctx.accounts.margin_vault.margin_sol_vault {
         margin_account.sol_balance = margin_account.sol_balance.checked_add(amount)
             .ok_or(MarginError::ArithmeticOverflow)?;
     } else {

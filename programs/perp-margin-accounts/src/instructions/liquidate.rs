@@ -26,8 +26,8 @@ pub struct LiquidateMarginAccount<'info> {
 
     #[account(
         mut,
-        constraint = margin_vault_token_account.key() == margin_vault.sol_vault || 
-                    margin_vault_token_account.key() == margin_vault.usdc_vault
+        constraint = margin_vault_token_account.key() == margin_vault.margin_sol_vault || 
+                    margin_vault_token_account.key() == margin_vault.margin_usdc_vault
     )]
     pub margin_vault_token_account: Account<'info, TokenAccount>,
 
@@ -71,7 +71,7 @@ pub fn handle_liquidate_margin_account(
     let margin_account = &mut ctx.accounts.margin_account;
 
     // Get current balance
-    let current_balance = if ctx.accounts.margin_vault_token_account.key() == ctx.accounts.margin_vault.sol_vault {
+    let current_balance = if ctx.accounts.margin_vault_token_account.key() == ctx.accounts.margin_vault.margin_sol_vault {
         margin_account.sol_balance
     } else {
         margin_account.usdc_balance
@@ -80,7 +80,7 @@ pub fn handle_liquidate_margin_account(
     // Only process if there's a balance to wipe
     if current_balance > 0 {
         // Set balance to 0
-        if ctx.accounts.margin_vault_token_account.key() == ctx.accounts.margin_vault.sol_vault {
+        if ctx.accounts.margin_vault_token_account.key() == ctx.accounts.margin_vault.margin_sol_vault {
             margin_account.sol_balance = 0;
         } else {
             margin_account.usdc_balance = 0;

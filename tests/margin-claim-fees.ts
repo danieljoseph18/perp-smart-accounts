@@ -17,8 +17,9 @@ import {
 import { assert } from "chai";
 import BN from "bn.js";
 import * as dotenv from "dotenv";
-import { initializeMarginProgram } from "./helpers/init-margin-program";
 import { wrapSol } from "./helpers/wrap-sol";
+import { setupAmmProgram } from "./helpers/init-amm-program";
+import { PerpAmm } from "../target/types/perp_amm";
 
 dotenv.config();
 
@@ -37,7 +38,9 @@ describe("perp-margin-accounts", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
-  const program = anchor.workspace
+  const ammProgram = anchor.workspace.PerpAmm as Program<PerpAmm>;
+
+  const marginProgram = anchor.workspace
     .PerpMarginAccounts as Program<PerpMarginAccounts>;
 
   // Use a fixed keypair for admin (for consistent testing)
@@ -51,6 +54,10 @@ describe("perp-margin-accounts", () => {
   let marginVault: PublicKey;
   let solVault: PublicKey;
   let usdcVault: PublicKey;
+  let lpTokenMint: PublicKey;
+
+  // Set up pool state
+  let poolState: PublicKey;
 
   // Set up token accounts
   let adminSolAccount: PublicKey;
@@ -60,9 +67,20 @@ describe("perp-margin-accounts", () => {
   let user2SolAccount: PublicKey;
   let user2UsdcAccount: PublicKey;
 
+  // User states
+  let user1State: PublicKey;
+  let user2State: PublicKey;
+
+  // User LP token accounts
+  let user1LpTokenAccount: PublicKey;
+  let user2LpTokenAccount: PublicKey;
+
   // User margin accounts
   let user1MarginAccount: PublicKey;
   let user2MarginAccount: PublicKey;
+
+  let marginSolVault: PublicKey;
+  let marginUsdcVault: PublicKey;
 
   // Global configuration state
   let configInitialized = false;
@@ -70,44 +88,82 @@ describe("perp-margin-accounts", () => {
   before(async () => {
     console.log("=== Starting test setup ===");
 
-    // Set up the Margin program; this helper creates mints, vaults,
-    // marginVault, and admin token accounts.
-    const setup = await initializeMarginProgram(
+    // Set up the AMM program; this helper creates mints, vaults,
+    // poolState, and admin/user token accounts.
+    const setup = await setupAmmProgram(
       provider,
-      program,
-      NATIVE_MINT, // Use WSOL
-      null, // Let the helper create the USDC mint
+      ammProgram,
+      marginProgram,
       chainlinkProgram,
-      chainlinkFeed
+      chainlinkFeed,
+      admin,
+      user1,
+      user2
     );
 
+    console.log("Setup complete, retrieving configuration values...");
+
     // Retrieve configuration values from the setup helper.
-    marginVault = setup.marginVault;
-    solMint = NATIVE_MINT;
+    poolState = setup.poolState;
+    solMint = setup.solMint;
+    usdcMint = setup.usdcMint;
+    lpTokenMint = setup.lpTokenMint;
     solVault = setup.solVault;
     usdcVault = setup.usdcVault;
+    adminSolAccount = setup.adminSolAccount;
+    adminUsdcAccount = setup.adminUsdcAccount;
+    user1UsdcAccount = setup.user1UsdcAccount;
+    user2UsdcAccount = setup.user2UsdcAccount;
+    marginVault = setup.marginVault;
+    marginSolVault = setup.marginSolVault;
+    marginUsdcVault = setup.marginUsdcVault;
 
-    // Create USDC mint since it's not returned by setup
-    usdcMint = (await getAccount(provider.connection, usdcVault)).mint;
+    console.log("Margin vault:", marginVault.toString());
 
-    // Create token accounts for all users
-    adminSolAccount = (
+    // Create LP token accounts for users
+    user1LpTokenAccount = (
       await getOrCreateAssociatedTokenAccount(
         provider.connection,
         admin,
-        solMint,
-        admin.publicKey
+        lpTokenMint,
+        user1.publicKey
       )
     ).address;
 
-    adminUsdcAccount = (
+    user2LpTokenAccount = (
       await getOrCreateAssociatedTokenAccount(
         provider.connection,
         admin,
-        usdcMint,
-        admin.publicKey
+        lpTokenMint,
+        user2.publicKey
       )
     ).address;
+
+    // Derive user states
+    [user1State] = PublicKey.findProgramAddressSync(
+      [Buffer.from("user_state"), user1.publicKey.toBuffer()],
+      marginProgram.programId
+    );
+
+    [user2State] = PublicKey.findProgramAddressSync(
+      [Buffer.from("user_state"), user2.publicKey.toBuffer()],
+      marginProgram.programId
+    );
+
+    // Derive user margin accounts
+    [user1MarginAccount] = PublicKey.findProgramAddressSync(
+      [Buffer.from("margin_account"), user1.publicKey.toBuffer()],
+      marginProgram.programId
+    );
+
+    [user2MarginAccount] = PublicKey.findProgramAddressSync(
+      [Buffer.from("margin_account"), user2.publicKey.toBuffer()],
+      marginProgram.programId
+    );
+
+    configInitialized = true;
+
+    // Get user token accounts
 
     user1SolAccount = (
       await getOrCreateAssociatedTokenAccount(
@@ -145,60 +201,15 @@ describe("perp-margin-accounts", () => {
       )
     ).address;
 
-    // Mint USDC to user accounts
-    await mintTo(
-      provider.connection,
-      admin,
-      usdcMint,
-      user1UsdcAccount,
-      admin.publicKey,
-      100_000_000 // 100 USDC
-    );
-
-    await mintTo(
-      provider.connection,
-      admin,
-      usdcMint,
-      user2UsdcAccount,
-      admin.publicKey,
-      100_000_000 // 100 USDC
-    );
-
-    // Wrap SOL for users
-    await wrapSol(
-      admin.publicKey,
-      user1SolAccount,
-      5 * LAMPORTS_PER_SOL,
-      provider,
-      admin
-    );
-
-    await wrapSol(
-      admin.publicKey,
-      user2SolAccount,
-      5 * LAMPORTS_PER_SOL,
-      provider,
-      admin
-    );
-
-    // Derive user margin accounts
-    [user1MarginAccount] = PublicKey.findProgramAddressSync(
-      [Buffer.from("margin_account"), user1.publicKey.toBuffer()],
-      program.programId
-    );
-
-    [user2MarginAccount] = PublicKey.findProgramAddressSync(
-      [Buffer.from("margin_account"), user2.publicKey.toBuffer()],
-      program.programId
-    );
+    console.log("User token accounts created");
 
     // Initialize user1 margin account
-    await program.methods
+    await marginProgram.methods
       .depositMargin(new BN(0))
       .accountsStrict({
         marginAccount: user1MarginAccount,
         marginVault: marginVault,
-        vaultTokenAccount: solVault,
+        vaultTokenAccount: marginSolVault,
         userTokenAccount: user1SolAccount,
         owner: user1.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -207,13 +218,15 @@ describe("perp-margin-accounts", () => {
       .signers([user1])
       .rpc();
 
+    console.log("User1 margin account initialized");
+
     // Initialize user2 margin account
-    await program.methods
+    await marginProgram.methods
       .depositMargin(new BN(0))
       .accountsStrict({
         marginAccount: user2MarginAccount,
         marginVault: marginVault,
-        vaultTokenAccount: usdcVault,
+        vaultTokenAccount: marginUsdcVault,
         userTokenAccount: user2UsdcAccount,
         owner: user2.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -221,6 +234,8 @@ describe("perp-margin-accounts", () => {
       })
       .signers([user2])
       .rpc();
+
+    console.log("User2 margin account initialized");
 
     configInitialized = true;
   });
@@ -238,7 +253,7 @@ describe("perp-margin-accounts", () => {
       // Deposit SOL and USDC to generate fees
       try {
         // User1 deposit SOL
-        await program.methods
+        await marginProgram.methods
           .depositMargin(new BN(LAMPORTS_PER_SOL)) // 1 SOL
           .accountsStrict({
             marginAccount: user1MarginAccount,
@@ -253,12 +268,12 @@ describe("perp-margin-accounts", () => {
           .rpc();
 
         // User2 deposit USDC
-        await program.methods
+        await marginProgram.methods
           .depositMargin(new BN(10_000_000)) // 10 USDC
           .accountsStrict({
             marginAccount: user2MarginAccount,
             marginVault: marginVault,
-            vaultTokenAccount: usdcVault,
+            vaultTokenAccount: marginUsdcVault,
             userTokenAccount: user2UsdcAccount,
             owner: user2.publicKey,
             tokenProgram: TOKEN_PROGRAM_ID,
@@ -269,7 +284,7 @@ describe("perp-margin-accounts", () => {
 
         // Make a small withdrawal which will generate fees
         // User1 requests withdrawal
-        await program.methods
+        await marginProgram.methods
           .requestWithdrawal(
             new BN(LAMPORTS_PER_SOL / 2), // 0.5 SOL
             new BN(0) // 0 USDC
@@ -293,7 +308,7 @@ describe("perp-margin-accounts", () => {
         try {
           // Execute withdrawal which will generate fees
           // This will fail since we're using mock accounts, but should still update the fee state
-          await program.methods
+          await marginProgram.methods
             .executeWithdrawal(
               new BN(0), // pnl_update (no PnL in this test)
               new BN(0), // locked_sol
@@ -304,8 +319,8 @@ describe("perp-margin-accounts", () => {
             .accountsStrict({
               marginAccount: user1MarginAccount,
               marginVault: marginVault,
-              solVault: solVault,
-              usdcVault: usdcVault,
+              marginSolVault: marginSolVault,
+              marginUsdcVault: marginUsdcVault,
               userSolAccount: user1SolAccount,
               userUsdcAccount: user1UsdcAccount,
               poolState: poolStatePda,
@@ -327,7 +342,7 @@ describe("perp-margin-accounts", () => {
           );
 
           // Cancel the withdrawal request to clean up
-          await program.methods
+          await marginProgram.methods
             .cancelWithdrawal()
             .accountsStrict({
               marginAccount: user1MarginAccount,
@@ -339,7 +354,7 @@ describe("perp-margin-accounts", () => {
         }
 
         // Set up the same for USDC
-        await program.methods
+        await marginProgram.methods
           .requestWithdrawal(
             new BN(0), // 0 SOL
             new BN(1_000_000) // 1 USDC
@@ -354,7 +369,7 @@ describe("perp-margin-accounts", () => {
           .rpc();
 
         try {
-          await program.methods
+          await marginProgram.methods
             .executeWithdrawal(
               new BN(0), // pnl_update
               new BN(0), // locked_sol
@@ -365,8 +380,8 @@ describe("perp-margin-accounts", () => {
             .accountsStrict({
               marginAccount: user2MarginAccount,
               marginVault: marginVault,
-              solVault: solVault,
-              usdcVault: usdcVault,
+              marginSolVault: marginSolVault,
+              marginUsdcVault: marginUsdcVault,
               userSolAccount: user2SolAccount,
               userUsdcAccount: user2UsdcAccount,
               poolState: poolStatePda,
@@ -388,7 +403,7 @@ describe("perp-margin-accounts", () => {
           );
 
           // Cancel the withdrawal request to clean up
-          await program.methods
+          await marginProgram.methods
             .cancelWithdrawal()
             .accountsStrict({
               marginAccount: user2MarginAccount,
@@ -404,7 +419,7 @@ describe("perp-margin-accounts", () => {
         // in a test environment without a real AMM program
         try {
           // Instead of using setTestFees, we'll do more deposits to generate fees
-          await program.methods
+          await marginProgram.methods
             .depositMargin(new BN(2 * LAMPORTS_PER_SOL)) // 2 SOL
             .accountsStrict({
               marginAccount: user1MarginAccount,
@@ -418,12 +433,12 @@ describe("perp-margin-accounts", () => {
             .signers([user1])
             .rpc();
 
-          await program.methods
+          await marginProgram.methods
             .depositMargin(new BN(20_000_000)) // 20 USDC
             .accountsStrict({
               marginAccount: user2MarginAccount,
               marginVault: marginVault,
-              vaultTokenAccount: usdcVault,
+              vaultTokenAccount: marginUsdcVault,
               userTokenAccount: user2UsdcAccount,
               owner: user2.publicKey,
               tokenProgram: TOKEN_PROGRAM_ID,
@@ -447,7 +462,7 @@ describe("perp-margin-accounts", () => {
 
     it("should allow admin to claim accumulated SOL fees", async () => {
       // Get balances before claiming fees
-      const marginVaultBefore = await program.account.marginVault.fetch(
+      const marginVaultBefore = await marginProgram.account.marginVault.fetch(
         marginVault
       );
       const adminSolBefore = await getAccount(
@@ -467,12 +482,12 @@ describe("perp-margin-accounts", () => {
       );
 
       // Claim fees
-      await program.methods
+      await marginProgram.methods
         .claimFees()
         .accountsStrict({
           marginVault: marginVault,
-          solVault: solVault,
-          usdcVault: usdcVault,
+          marginSolVault: marginSolVault,
+          marginUsdcVault: marginUsdcVault,
           adminSolAccount: adminSolAccount,
           adminUsdcAccount: adminUsdcAccount,
           authority: admin.publicKey,
@@ -482,7 +497,7 @@ describe("perp-margin-accounts", () => {
         .rpc();
 
       // Get balances after claiming fees
-      const marginVaultAfter = await program.account.marginVault.fetch(
+      const marginVaultAfter = await marginProgram.account.marginVault.fetch(
         marginVault
       );
       const adminSolAfter = await getAccount(
@@ -507,7 +522,7 @@ describe("perp-margin-accounts", () => {
 
     it("should allow admin to claim accumulated USDC fees", async () => {
       // Get balances before claiming fees
-      const marginVaultBefore = await program.account.marginVault.fetch(
+      const marginVaultBefore = await marginProgram.account.marginVault.fetch(
         marginVault
       );
       const adminUsdcBefore = await getAccount(
@@ -527,12 +542,12 @@ describe("perp-margin-accounts", () => {
       );
 
       // Claim fees
-      await program.methods
+      await marginProgram.methods
         .claimFees()
         .accountsStrict({
           marginVault: marginVault,
-          solVault: solVault,
-          usdcVault: usdcVault,
+          marginSolVault: solVault,
+          marginUsdcVault: usdcVault,
           adminSolAccount: adminSolAccount,
           adminUsdcAccount: adminUsdcAccount,
           authority: admin.publicKey,
@@ -542,7 +557,7 @@ describe("perp-margin-accounts", () => {
         .rpc();
 
       // Get balances after claiming fees
-      const marginVaultAfter = await program.account.marginVault.fetch(
+      const marginVaultAfter = await marginProgram.account.marginVault.fetch(
         marginVault
       );
       const adminUsdcAfter = await getAccount(
@@ -577,12 +592,12 @@ describe("perp-margin-accounts", () => {
           )
         ).address;
 
-        await program.methods
+        await marginProgram.methods
           .claimFees()
           .accountsStrict({
             marginVault: marginVault,
-            solVault: solVault,
-            usdcVault: usdcVault,
+            marginSolVault: solVault,
+            marginUsdcVault: usdcVault,
             adminSolAccount: user1SolAccount,
             adminUsdcAccount: user1UsdcAccount,
             authority: user1.publicKey,

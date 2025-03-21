@@ -25,16 +25,6 @@ export async function initializeMarginProgram(
     program.programId
   );
 
-  const [solVault] = PublicKey.findProgramAddressSync(
-    [Buffer.from("sol_vault")],
-    program.programId
-  );
-
-  const [usdcVault] = PublicKey.findProgramAddressSync(
-    [Buffer.from("usdc_vault")],
-    program.programId
-  );
-
   console.log("Margin Vault PDA:", marginVault.toString());
 
   // Check if margin vault already exists
@@ -44,13 +34,14 @@ export async function initializeMarginProgram(
   if (marginVaultInfo) {
     console.log("✓ Margin program already initialized, retrieving vaults");
 
-    console.log("Margin SOL vault:", solVault.toString());
-    console.log("Margin USDC vault:", usdcVault.toString());
+    const marginVaultAccount = await program.account.marginVault.fetch(
+      marginVault
+    );
 
     return {
       marginVault,
-      solVault: solVault,
-      usdcVault: usdcVault,
+      marginSolVault: marginVaultAccount.marginSolVault,
+      marginUsdcVault: marginVaultAccount.marginUsdcVault,
       chainlinkProgram,
       chainlinkFeed,
     };
@@ -94,8 +85,8 @@ export async function initializeMarginProgram(
       .accountsStrict({
         authority: provider.wallet.publicKey,
         marginVault,
-        solVault: solVaultAccount.address,
-        usdcVault: usdcVaultAccount.address,
+        marginSolVault: solVaultAccount.address,
+        marginUsdcVault: usdcVaultAccount.address,
         systemProgram: SystemProgram.programId,
         tokenProgram: TOKEN_PROGRAM_ID,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY,
@@ -103,13 +94,13 @@ export async function initializeMarginProgram(
       .rpc();
 
     console.log("✓ Margin program initialized successfully!");
-    console.log("Margin SOL vault:", solVault.toString());
-    console.log("Margin USDC vault:", usdcVault.toString());
+    console.log("Margin SOL vault:", solVaultAccount.address.toString());
+    console.log("Margin USDC vault:", usdcVaultAccount.address.toString());
 
     return {
       marginVault,
-      solVault: solVault,
-      usdcVault: usdcVault,
+      marginSolVault: solVaultAccount.address,
+      marginUsdcVault: usdcVaultAccount.address,
       chainlinkProgram,
       chainlinkFeed,
     };

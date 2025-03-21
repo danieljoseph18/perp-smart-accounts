@@ -14,14 +14,14 @@ pub struct Initialize<'info> {
     pub margin_vault: Account<'info, MarginVault>,
 
     #[account(
-        constraint = sol_vault.owner == margin_vault.key()
+        constraint = margin_sol_vault.owner == margin_vault.key()
     )]
-    pub sol_vault: Account<'info, TokenAccount>,
+    pub margin_sol_vault: Account<'info, TokenAccount>,
 
     #[account(
-        constraint = usdc_vault.owner == margin_vault.key()
+        constraint = margin_usdc_vault.owner == margin_vault.key()
     )]
-    pub usdc_vault: Account<'info, TokenAccount>,
+    pub margin_usdc_vault: Account<'info, TokenAccount>,
 
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -32,15 +32,15 @@ pub struct Initialize<'info> {
 }
 
 pub fn handle_initialize(
-    ctx: Context<Initialize>, 
+    ctx: Context<Initialize>,
     withdrawal_timelock: i64,
     chainlink_program: Pubkey,
     chainlink_feed: Pubkey,
 ) -> Result<()> {
     let margin_vault = &mut ctx.accounts.margin_vault;
 
-    margin_vault.sol_vault = ctx.accounts.sol_vault.key();
-    margin_vault.usdc_vault = ctx.accounts.usdc_vault.key();
+    margin_vault.margin_sol_vault = ctx.accounts.margin_sol_vault.key();
+    margin_vault.margin_usdc_vault = ctx.accounts.margin_usdc_vault.key();
     margin_vault.authority = ctx.accounts.authority.key();
     margin_vault.withdrawal_timelock = withdrawal_timelock;
     margin_vault.bump = ctx.bumps.margin_vault;

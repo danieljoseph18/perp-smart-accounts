@@ -15,15 +15,15 @@ pub struct ClaimFees<'info> {
 
     #[account(
         mut,
-        constraint = sol_vault.key() == margin_vault.sol_vault,
+        constraint = margin_sol_vault.key() == margin_vault.margin_sol_vault,
     )]
-    pub sol_vault: Account<'info, TokenAccount>,
+    pub margin_sol_vault: Account<'info, TokenAccount>,
 
     #[account(
         mut,
-        constraint = usdc_vault.key() == margin_vault.usdc_vault,
+        constraint = margin_usdc_vault.key() == margin_vault.margin_usdc_vault,
     )]
-    pub usdc_vault: Account<'info, TokenAccount>,
+    pub margin_usdc_vault: Account<'info, TokenAccount>,
 
     #[account(
         mut,
@@ -50,7 +50,7 @@ pub fn handle_claim_fees(ctx: Context<ClaimFees>) -> Result<()> {
     if margin_vault.sol_fees_accumulated > 0 {
         let sol_fees = margin_vault.sol_fees_accumulated;
         let cpi_accounts = Transfer {
-            from: ctx.accounts.sol_vault.to_account_info(),
+            from: ctx.accounts.margin_sol_vault.to_account_info(),
             to: ctx.accounts.admin_sol_account.to_account_info(),
             authority: margin_vault.to_account_info(),
         };
@@ -70,7 +70,7 @@ pub fn handle_claim_fees(ctx: Context<ClaimFees>) -> Result<()> {
     if margin_vault.usdc_fees_accumulated > 0 {
         let usdc_fees = margin_vault.usdc_fees_accumulated;
         let cpi_accounts = Transfer {
-            from: ctx.accounts.usdc_vault.to_account_info(),
+            from: ctx.accounts.margin_usdc_vault.to_account_info(),
             to: ctx.accounts.admin_usdc_account.to_account_info(),
             authority: margin_vault.to_account_info(),
         };

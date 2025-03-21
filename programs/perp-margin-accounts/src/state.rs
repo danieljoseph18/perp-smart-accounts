@@ -22,9 +22,9 @@ pub struct MarginAccount {
 #[account]
 pub struct MarginVault {
     /// The token account holding SOL margin deposits
-    pub sol_vault: Pubkey,
+    pub margin_sol_vault: Pubkey,
     /// The token account holding USDC margin deposits
-    pub usdc_vault: Pubkey,
+    pub margin_usdc_vault: Pubkey,
     /// Authority that can update PnL
     pub authority: Pubkey,
     /// Minimum time required between withdrawal request and execution (in seconds)

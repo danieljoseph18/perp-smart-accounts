@@ -56,6 +56,10 @@ export async function setupAmmProgram(
   let user2UsdcAccount: PublicKey;
 
   // Check if pool state exists
+  let marginVault: PublicKey;
+  let marginSolVault: PublicKey;
+  let marginUsdcVault: PublicKey;
+
   const poolStateInfo = await provider.connection.getAccountInfo(poolState);
 
   if (poolStateInfo) {
@@ -84,12 +88,24 @@ export async function setupAmmProgram(
     // Get USDC mint from the USDC vault
     usdcMint = usdcVaultInfo.mint;
 
-    console.log("Using existing configuration:");
-    console.log("- Chainlink feed:", chainlinkFeed.toString());
-    console.log("- LP Token mint:", lpTokenMint.toString());
-    console.log("- SOL vault:", solVault.address.toString());
+    // Get margin vault from the pool state
+    marginVault = PublicKey.findProgramAddressSync(
+      [Buffer.from("margin_vault")],
+      marginProgram.programId
+    )[0];
+
+    const marginVaultAccount = await marginProgram.account.marginVault.fetch(
+      marginVault
+    );
+
+    marginSolVault = marginVaultAccount.marginSolVault;
+    marginUsdcVault = marginVaultAccount.marginUsdcVault;
+
     console.log("- USDC vault:", usdcVault.address.toString());
     console.log("- USDC mint:", usdcMint.toString());
+    console.log("- Margin vault:", marginVault.toString());
+    console.log("- Margin SOL vault:", marginSolVault.toString());
+    console.log("- Margin USDC vault:", marginUsdcVault.toString());
 
     // Create or get token accounts for testing
     await setupUserAccounts();
@@ -352,14 +368,18 @@ export async function setupAmmProgram(
     console.log("USDC vault:", usdcVault.address.toString());
 
     // Initialize margin program - pass mint addresses instead of vault addresses
-    await initializeMarginProgram(
+    let marginInit = (await initializeMarginProgram(
       provider,
       marginProgram,
       solMint,
       usdcMint,
       chainlinkProgram,
       chainlinkFeed
-    );
+    )) as any;
+
+    marginSolVault = marginInit.marginSolVault;
+    marginUsdcVault = marginInit.marginUsdcVault;
+    marginVault = marginInit.marginVault;
 
     // Create a keypair for the LP token mint
     lpTokenMintKeypair = Keypair.generate();
@@ -395,10 +415,13 @@ export async function setupAmmProgram(
     lpTokenMint,
     solVault: solVault.address,
     usdcVault: usdcVault.address,
+    marginSolVault,
+    marginUsdcVault,
     chainlinkFeed,
     adminSolAccount,
     adminUsdcAccount,
     user1UsdcAccount,
     user2UsdcAccount,
+    marginVault,
   };
 }
