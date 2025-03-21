@@ -401,7 +401,8 @@ describe("perp-amm (with configuration persistence)", () => {
       solMint,
       usdcMint,
       chainlinkProgram,
-      chainlinkFeed
+      chainlinkFeed,
+      admin
     );
 
     // Create a keypair for the LP token mint

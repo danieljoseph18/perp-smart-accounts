@@ -22,89 +22,158 @@ import { setupAmmProgram } from "./helpers/init-amm-program";
 
 dotenv.config();
 
-// These are the chainlink-related addresses used by the margin program.
-const CHAINLINK_PROGRAM = new PublicKey(
+// Get the deployed chainlink_mock program
+const chainlinkProgram = new PublicKey(
   "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny"
 );
-const CHAINLINK_FEED = new PublicKey(
+
+// Devnet SOL/USD Price Feed
+const chainlinkFeed = new PublicKey(
   "99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR"
 );
 
 describe("perp-margin-accounts", () => {
-  // Use separate program clients for the AMM and the margin program.
+  // Configure the client to use the local cluster
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
   const ammProgram = anchor.workspace.PerpAmm as Program<PerpAmm>;
+
   const marginProgram = anchor.workspace
     .PerpMarginAccounts as Program<PerpMarginAccounts>;
 
-  // Use fixed keypairs for admin and a liquidator (unauthorized)
+  // Use a fixed keypair for admin (for consistent testing)
   const admin = Keypair.fromSeed(Uint8Array.from(Array(32).fill(1)));
   const user1 = Keypair.generate();
   const user2 = Keypair.generate();
-  const liquidator = Keypair.generate();
 
-  // AMM configuration (pool state, vaults, mints, etc.)
-  let poolStatePda: PublicKey;
-  let ammSolVault: PublicKey;
-  let ammUsdcVault: PublicKey;
-
-  // Margin program vault information (returned from initializeMarginProgram)
-  let marginVault: PublicKey;
-  let marginSolVault: PublicKey;
-  let marginUsdcVault: PublicKey;
-
-  // Token mints
-  let solMint: PublicKey;
+  // Set up token mints and vaults
   let usdcMint: PublicKey;
+  let solMint: PublicKey;
+  let marginVault: PublicKey;
+  let solVault: PublicKey;
+  let usdcVault: PublicKey;
   let lpTokenMint: PublicKey;
 
-  // User token accounts (for receiving tokens and paying fees)
+  // Set up pool state
+  let poolState: PublicKey;
+
+  // Set up token accounts
   let adminSolAccount: PublicKey;
   let adminUsdcAccount: PublicKey;
-  let user1UsdcAccount: PublicKey;
-  let user2UsdcAccount: PublicKey;
   let user1SolAccount: PublicKey;
+  let user1UsdcAccount: PublicKey;
   let user2SolAccount: PublicKey;
+  let user2UsdcAccount: PublicKey;
 
-  // User margin accounts (PDAs derived with ["margin_account", user.publicKey])
+  // User states
+  let user1State: PublicKey;
+  let user2State: PublicKey;
+
+  // User LP token accounts
+  let user1LpTokenAccount: PublicKey;
+  let user2LpTokenAccount: PublicKey;
+
+  // User margin accounts
   let user1MarginAccount: PublicKey;
   let user2MarginAccount: PublicKey;
 
-  // Test deposit amounts
-  const initialSolDeposit = new BN(2 * LAMPORTS_PER_SOL);
-  const initialUsdcDeposit = new BN(10_000_000); // 10 USDC with 6 decimals
+  let marginSolVault: PublicKey;
+  let marginUsdcVault: PublicKey;
+
+  // Test parameters
+  const solDepositAmount = new BN(LAMPORTS_PER_SOL); // 1 SOL
+  const usdcDepositAmount = new BN(10_000_000); // 10 USDC (with 6 decimals)
+
+  // Test parameters
+  const withdrawalTimelock = 5 * 60; // 5 minutes in seconds
+
+  const initialSolDeposit = new BN(1000);
+  const initialUsdcDeposit = new BN(1000);
+
+  // Global configuration state
+  let configInitialized = false;
 
   before(async () => {
     console.log("=== Starting test setup ===");
 
-    // Set up the AMM program. This helper creates the pool state, mints, vaults and
-    // associated user token accounts.
-    const ammSetup = await setupAmmProgram(
+    // Set up the AMM program; this helper creates mints, vaults,
+    // poolState, and admin/user token accounts.
+    const setup = await setupAmmProgram(
       provider,
       ammProgram,
-      marginProgram, // passed in case the AMM setup also needs the margin program
-      CHAINLINK_PROGRAM,
-      CHAINLINK_FEED,
+      marginProgram,
+      chainlinkProgram,
+      chainlinkFeed,
       admin,
       user1,
       user2
     );
 
-    // The AMM setup returns the pool state PDA as well as the vaults and mint addresses.
-    poolStatePda = ammSetup.poolState;
-    solMint = ammSetup.solMint;
-    usdcMint = ammSetup.usdcMint;
-    lpTokenMint = ammSetup.lpTokenMint;
-    ammSolVault = ammSetup.solVault;
-    ammUsdcVault = ammSetup.usdcVault;
-    adminSolAccount = ammSetup.adminSolAccount;
-    adminUsdcAccount = ammSetup.adminUsdcAccount;
-    user1UsdcAccount = ammSetup.user1UsdcAccount;
-    user2UsdcAccount = ammSetup.user2UsdcAccount;
+    console.log("Setup complete, retrieving configuration values...");
 
-    // Create associated token accounts for SOL (wrapped SOL) for our users.
+    // Retrieve configuration values from the setup helper.
+    poolState = setup.poolState;
+    solMint = setup.solMint;
+    usdcMint = setup.usdcMint;
+    lpTokenMint = setup.lpTokenMint;
+    solVault = setup.solVault;
+    usdcVault = setup.usdcVault;
+    adminSolAccount = setup.adminSolAccount;
+    adminUsdcAccount = setup.adminUsdcAccount;
+    user1UsdcAccount = setup.user1UsdcAccount;
+    user2UsdcAccount = setup.user2UsdcAccount;
+    marginVault = setup.marginVault;
+    marginSolVault = setup.marginSolVault;
+    marginUsdcVault = setup.marginUsdcVault;
+
+    console.log("Margin vault:", marginVault.toString());
+
+    // Create LP token accounts for users
+    user1LpTokenAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        admin,
+        lpTokenMint,
+        user1.publicKey
+      )
+    ).address;
+
+    user2LpTokenAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        admin,
+        lpTokenMint,
+        user2.publicKey
+      )
+    ).address;
+
+    // Derive user states
+    [user1State] = PublicKey.findProgramAddressSync(
+      [Buffer.from("user_state"), user1.publicKey.toBuffer()],
+      marginProgram.programId
+    );
+
+    [user2State] = PublicKey.findProgramAddressSync(
+      [Buffer.from("user_state"), user2.publicKey.toBuffer()],
+      marginProgram.programId
+    );
+
+    // Derive user margin accounts
+    [user1MarginAccount] = PublicKey.findProgramAddressSync(
+      [Buffer.from("margin_account"), user1.publicKey.toBuffer()],
+      marginProgram.programId
+    );
+
+    [user2MarginAccount] = PublicKey.findProgramAddressSync(
+      [Buffer.from("margin_account"), user2.publicKey.toBuffer()],
+      marginProgram.programId
+    );
+
+    configInitialized = true;
+
+    // Get user token accounts
+
     user1SolAccount = (
       await getOrCreateAssociatedTokenAccount(
         provider.connection,
@@ -113,6 +182,16 @@ describe("perp-margin-accounts", () => {
         user1.publicKey
       )
     ).address;
+
+    user1UsdcAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        admin,
+        usdcMint,
+        user1.publicKey
+      )
+    ).address;
+
     user2SolAccount = (
       await getOrCreateAssociatedTokenAccount(
         provider.connection,
@@ -122,31 +201,18 @@ describe("perp-margin-accounts", () => {
       )
     ).address;
 
-    marginVault = PublicKey.findProgramAddressSync(
-      [Buffer.from("margin_vault")],
-      marginProgram.programId
-    )[0];
+    user2UsdcAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        admin,
+        usdcMint,
+        user2.publicKey
+      )
+    ).address;
 
-    marginSolVault = ammSetup.solVault;
-    marginUsdcVault = ammSetup.usdcVault;
+    console.log("User token accounts created");
 
-    // Derive the margin account PDAs for user1 and user2.
-    [user1MarginAccount] = PublicKey.findProgramAddressSync(
-      [Buffer.from("margin_account"), user1.publicKey.toBuffer()],
-      marginProgram.programId
-    );
-    [user2MarginAccount] = PublicKey.findProgramAddressSync(
-      [Buffer.from("margin_account"), user2.publicKey.toBuffer()],
-      marginProgram.programId
-    );
-
-    // Ensure admin, users, and liquidator have sufficient SOL for fees.
-    await Promise.all([
-      ensureMinimumBalance(admin.publicKey, 5 * LAMPORTS_PER_SOL),
-      ensureMinimumBalance(user1.publicKey, 5 * LAMPORTS_PER_SOL),
-      ensureMinimumBalance(user2.publicKey, 5 * LAMPORTS_PER_SOL),
-      ensureMinimumBalance(liquidator.publicKey, 5 * LAMPORTS_PER_SOL),
-    ]);
+    configInitialized = true;
   });
 
   // Helper: airdrop SOL if needed
@@ -190,7 +256,7 @@ describe("perp-margin-accounts", () => {
       );
 
       // Capture the pool SOL vault balance before liquidation.
-      const poolSolBefore = await getAccount(provider.connection, ammSolVault);
+      const poolSolBefore = await getAccount(provider.connection, solVault);
       const poolSolAmountBefore = new BN(poolSolBefore.amount.toString());
 
       // Call the liquidation instruction.
@@ -200,10 +266,10 @@ describe("perp-margin-accounts", () => {
           marginAccount: user1MarginAccount,
           marginVault: marginVault,
           marginVaultTokenAccount: marginSolVault,
-          poolState: poolStatePda,
-          poolVaultAccount: ammSolVault,
-          chainlinkProgram: CHAINLINK_PROGRAM,
-          chainlinkFeed: CHAINLINK_FEED,
+          poolState: poolState,
+          poolVaultAccount: solVault,
+          chainlinkProgram: chainlinkProgram,
+          chainlinkFeed: chainlinkFeed,
           authority: admin.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           liquidityPoolProgram: ammProgram.programId,
@@ -224,7 +290,7 @@ describe("perp-margin-accounts", () => {
       );
 
       // Verify that the AMM pool vault increased by the deposited amount.
-      const poolSolAfter = await getAccount(provider.connection, ammSolVault);
+      const poolSolAfter = await getAccount(provider.connection, solVault);
       const poolSolAmountAfter = new BN(poolSolAfter.amount.toString());
       const diff = poolSolAmountAfter.sub(poolSolAmountBefore);
       assert.equal(
@@ -261,10 +327,7 @@ describe("perp-margin-accounts", () => {
       );
 
       // Capture the pool USDC vault balance before liquidation.
-      const poolUsdcBefore = await getAccount(
-        provider.connection,
-        ammUsdcVault
-      );
+      const poolUsdcBefore = await getAccount(provider.connection, usdcVault);
       const poolUsdcAmountBefore = new BN(poolUsdcBefore.amount.toString());
 
       // Call the liquidation instruction.
@@ -274,10 +337,10 @@ describe("perp-margin-accounts", () => {
           marginAccount: user2MarginAccount,
           marginVault: marginVault,
           marginVaultTokenAccount: marginUsdcVault,
-          poolState: poolStatePda,
-          poolVaultAccount: ammUsdcVault,
-          chainlinkProgram: CHAINLINK_PROGRAM,
-          chainlinkFeed: CHAINLINK_FEED,
+          poolState: poolState,
+          poolVaultAccount: usdcVault,
+          chainlinkProgram: chainlinkProgram,
+          chainlinkFeed: chainlinkFeed,
           authority: admin.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           liquidityPoolProgram: ammProgram.programId,
@@ -298,7 +361,7 @@ describe("perp-margin-accounts", () => {
       );
 
       // Verify that the AMM pool vault increased by the liquidated amount.
-      const poolUsdcAfter = await getAccount(provider.connection, ammUsdcVault);
+      const poolUsdcAfter = await getAccount(provider.connection, usdcVault);
       const poolUsdcAmountAfter = new BN(poolUsdcAfter.amount.toString());
       const diff = poolUsdcAmountAfter.sub(poolUsdcAmountBefore);
       assert.equal(
@@ -317,16 +380,16 @@ describe("perp-margin-accounts", () => {
             marginAccount: user1MarginAccount,
             marginVault: marginVault,
             marginVaultTokenAccount: marginSolVault,
-            poolState: poolStatePda,
-            poolVaultAccount: ammSolVault,
-            chainlinkProgram: CHAINLINK_PROGRAM,
-            chainlinkFeed: CHAINLINK_FEED,
-            authority: liquidator.publicKey, // Unauthorized!
+            poolState: poolState,
+            poolVaultAccount: solVault,
+            chainlinkProgram: chainlinkProgram,
+            chainlinkFeed: chainlinkFeed,
+            authority: admin.publicKey, // Unauthorized!
             tokenProgram: TOKEN_PROGRAM_ID,
             liquidityPoolProgram: ammProgram.programId,
             systemProgram: SystemProgram.programId,
           })
-          .signers([liquidator])
+          .signers([user1])
           .rpc();
 
         assert.fail("Expected transaction to fail with unauthorized authority");
@@ -374,10 +437,10 @@ describe("perp-margin-accounts", () => {
           marginAccount: zeroMarginAccount,
           marginVault: marginVault,
           marginVaultTokenAccount: marginSolVault, // using the SOL vault as example
-          poolState: poolStatePda,
-          poolVaultAccount: ammSolVault,
-          chainlinkProgram: CHAINLINK_PROGRAM,
-          chainlinkFeed: CHAINLINK_FEED,
+          poolState: poolState,
+          poolVaultAccount: solVault,
+          chainlinkProgram: chainlinkProgram,
+          chainlinkFeed: chainlinkFeed,
           authority: admin.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           liquidityPoolProgram: ammProgram.programId,
