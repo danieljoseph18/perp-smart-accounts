@@ -46,6 +46,10 @@ pub fn handler(
     amount: u64,
 ) -> Result<()> {
     let margin_account = &mut ctx.accounts.margin_account;
+
+    if amount == 0 {
+        return Err(MarginError::ZeroDepositAmount.into());
+    }
     
     // Initialize margin account if new
     if margin_account.owner == Pubkey::default() {

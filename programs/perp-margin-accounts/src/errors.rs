@@ -46,4 +46,7 @@ pub enum MarginError {
 
     #[msg("Position is liquidatable")]
     LiquidatablePosition,
+
+    #[msg("Zero deposit amount")]
+    ZeroDepositAmount,
 }

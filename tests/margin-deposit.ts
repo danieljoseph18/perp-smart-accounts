@@ -83,6 +83,10 @@ describe("perp-margin-accounts", () => {
   let marginSolVault: PublicKey;
   let marginUsdcVault: PublicKey;
 
+  // Test parameters
+  const solDepositAmount = new BN(LAMPORTS_PER_SOL); // 1 SOL
+  const usdcDepositAmount = new BN(10_000_000); // 10 USDC (with 6 decimals)
+
   // Global configuration state
   let configInitialized = false;
 
@@ -204,40 +208,6 @@ describe("perp-margin-accounts", () => {
 
     console.log("User token accounts created");
 
-    // Initialize user1 margin account
-    await marginProgram.methods
-      .depositMargin(new BN(0))
-      .accountsStrict({
-        marginAccount: user1MarginAccount,
-        marginVault: marginVault,
-        vaultTokenAccount: marginSolVault,
-        userTokenAccount: user1SolAccount,
-        owner: user1.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([user1])
-      .rpc();
-
-    console.log("User1 margin account initialized");
-
-    // Initialize user2 margin account
-    await marginProgram.methods
-      .depositMargin(new BN(0))
-      .accountsStrict({
-        marginAccount: user2MarginAccount,
-        marginVault: marginVault,
-        vaultTokenAccount: marginUsdcVault,
-        userTokenAccount: user2UsdcAccount,
-        owner: user2.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([user2])
-      .rpc();
-
-    console.log("User2 margin account initialized");
-
     configInitialized = true;
   });
   // Ensure configuration is initialized before each test.
@@ -248,57 +218,33 @@ describe("perp-margin-accounts", () => {
   });
 
   describe("deposit_margin", () => {
-    it("should initialize and deposit SOL to a new margin account", async () => {
-      // Get initial balances
-      const solVaultBefore = await getAccount(provider.connection, solVault);
-      const user1SolBefore = await getAccount(
+    it("should initialize and deposit WSOL to a new margin account", async () => {
+      // Wrap SOL first to get WSOL tokens
+      await wrapSol(
+        user1.publicKey,
+        user1SolAccount,
+        solDepositAmount.toNumber(),
+        provider,
+        user1
+      );
+
+      // Get initial balances after wrapping SOL
+      const marginSolVaultBefore = await getAccount(
+        provider.connection,
+        marginSolVault
+      );
+      const user1WsolBefore = await getAccount(
         provider.connection,
         user1SolAccount
       );
 
-      // Initialize user1 margin account with a zero deposit
-      await marginProgram.methods
-        .depositMargin(new BN(0))
-        .accountsStrict({
-          marginAccount: user1MarginAccount,
-          marginVault: marginVault,
-          vaultTokenAccount: solVault,
-          userTokenAccount: user1SolAccount,
-          owner: user1.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-        })
-        .signers([user1])
-        .rpc();
-
-      // Get the margin account state after initialization
-      const marginAccountInitialized =
-        await marginProgram.account.marginAccount.fetch(user1MarginAccount);
-
-      // Verify the margin account is initialized correctly
-      assert.equal(
-        marginAccountInitialized.owner.toString(),
-        user1.publicKey.toString(),
-        "Margin account owner should be user1"
-      );
-      assert.equal(
-        marginAccountInitialized.solBalance.toString(),
-        "0",
-        "Initial SOL balance should be zero"
-      );
-      assert.equal(
-        marginAccountInitialized.usdcBalance.toString(),
-        "0",
-        "Initial USDC balance should be zero"
-      );
-
-      // Deposit SOL
+      // Deposit WSOL
       await marginProgram.methods
         .depositMargin(solDepositAmount)
         .accountsStrict({
           marginAccount: user1MarginAccount,
           marginVault: marginVault,
-          vaultTokenAccount: solVault,
+          vaultTokenAccount: marginSolVault,
           userTokenAccount: user1SolAccount,
           owner: user1.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
@@ -308,8 +254,11 @@ describe("perp-margin-accounts", () => {
         .rpc();
 
       // Get balances after deposit
-      const solVaultAfter = await getAccount(provider.connection, solVault);
-      const user1SolAfter = await getAccount(
+      const marginSolVaultAfter = await getAccount(
+        provider.connection,
+        marginSolVault
+      );
+      const user1WsolAfter = await getAccount(
         provider.connection,
         user1SolAccount
       );
@@ -318,19 +267,19 @@ describe("perp-margin-accounts", () => {
 
       // Verify state changes
       assert.equal(
-        new BN(solVaultAfter.amount.toString())
-          .sub(new BN(solVaultBefore.amount.toString()))
+        new BN(marginSolVaultAfter.amount.toString())
+          .sub(new BN(marginSolVaultBefore.amount.toString()))
           .toString(),
         solDepositAmount.toString(),
-        "SOL vault balance should increase by deposit amount"
+        "WSOL vault balance should increase by deposit amount"
       );
 
       assert.equal(
-        new BN(user1SolBefore.amount.toString())
-          .sub(new BN(user1SolAfter.amount.toString()))
+        new BN(user1WsolBefore.amount.toString())
+          .sub(new BN(user1WsolAfter.amount.toString()))
           .toString(),
         solDepositAmount.toString(),
-        "User SOL balance should decrease by deposit amount"
+        "User WSOL balance should decrease by deposit amount"
       );
 
       assert.equal(
@@ -342,26 +291,16 @@ describe("perp-margin-accounts", () => {
 
     it("should initialize and deposit USDC to a new margin account", async () => {
       // Get initial balances
-      const usdcVaultBefore = await getAccount(provider.connection, usdcVault);
+      const marginUsdcVaultBefore = await getAccount(
+        provider.connection,
+        marginUsdcVault
+      );
       const user2UsdcBefore = await getAccount(
         provider.connection,
         user2UsdcAccount
       );
 
-      // Initialize user2 margin account with a zero deposit
-      await marginProgram.methods
-        .depositMargin(new BN(0))
-        .accountsStrict({
-          marginAccount: user2MarginAccount,
-          marginVault: marginVault,
-          vaultTokenAccount: usdcVault,
-          userTokenAccount: user2UsdcAccount,
-          owner: user2.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-        })
-        .signers([user2])
-        .rpc();
+      console.log("User USDC bal before: ", user2UsdcBefore.amount);
 
       // Deposit USDC
       await marginProgram.methods
@@ -369,7 +308,7 @@ describe("perp-margin-accounts", () => {
         .accountsStrict({
           marginAccount: user2MarginAccount,
           marginVault: marginVault,
-          vaultTokenAccount: usdcVault,
+          vaultTokenAccount: marginUsdcVault,
           userTokenAccount: user2UsdcAccount,
           owner: user2.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
@@ -379,7 +318,10 @@ describe("perp-margin-accounts", () => {
         .rpc();
 
       // Get balances after deposit
-      const usdcVaultAfter = await getAccount(provider.connection, usdcVault);
+      const marginUsdcVaultAfter = await getAccount(
+        provider.connection,
+        marginUsdcVault
+      );
       const user2UsdcAfter = await getAccount(
         provider.connection,
         user2UsdcAccount
@@ -389,8 +331,8 @@ describe("perp-margin-accounts", () => {
 
       // Verify state changes
       assert.equal(
-        new BN(usdcVaultAfter.amount.toString())
-          .sub(new BN(usdcVaultBefore.amount.toString()))
+        new BN(marginUsdcVaultAfter.amount.toString())
+          .sub(new BN(marginUsdcVaultBefore.amount.toString()))
           .toString(),
         usdcDepositAmount.toString(),
         "USDC vault balance should increase by deposit amount"
@@ -413,22 +355,36 @@ describe("perp-margin-accounts", () => {
 
     it("should deposit additional SOL to an existing margin account", async () => {
       // Get initial balances
-      const solVaultBefore = await getAccount(provider.connection, solVault);
+      const marginSolVaultBefore = await getAccount(
+        provider.connection,
+        marginSolVault
+      );
+
+      // Deposit more SOL
+      const additionalSolDeposit = new BN(LAMPORTS_PER_SOL / 2); // 0.5 SOL
+
+      await wrapSol(
+        user1.publicKey,
+        user1SolAccount,
+        additionalSolDeposit.toNumber(),
+        provider,
+        user1
+      );
+
       const user1SolBefore = await getAccount(
         provider.connection,
         user1SolAccount
       );
+
       const marginAccountBefore =
         await marginProgram.account.marginAccount.fetch(user1MarginAccount);
 
-      // Deposit more SOL
-      const additionalSolDeposit = new BN(LAMPORTS_PER_SOL / 2); // 0.5 SOL
       await marginProgram.methods
         .depositMargin(additionalSolDeposit)
         .accountsStrict({
           marginAccount: user1MarginAccount,
           marginVault: marginVault,
-          vaultTokenAccount: solVault,
+          vaultTokenAccount: marginSolVault,
           userTokenAccount: user1SolAccount,
           owner: user1.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
@@ -438,7 +394,10 @@ describe("perp-margin-accounts", () => {
         .rpc();
 
       // Get balances after deposit
-      const solVaultAfter = await getAccount(provider.connection, solVault);
+      const marginSolVaultAfter = await getAccount(
+        provider.connection,
+        marginSolVault
+      );
       const user1SolAfter = await getAccount(
         provider.connection,
         user1SolAccount
@@ -448,8 +407,8 @@ describe("perp-margin-accounts", () => {
 
       // Verify state changes
       assert.equal(
-        new BN(solVaultAfter.amount.toString())
-          .sub(new BN(solVaultBefore.amount.toString()))
+        new BN(marginSolVaultAfter.amount.toString())
+          .sub(new BN(marginSolVaultBefore.amount.toString()))
           .toString(),
         additionalSolDeposit.toString(),
         "SOL vault balance should increase by additional deposit amount"
@@ -460,7 +419,7 @@ describe("perp-margin-accounts", () => {
           .sub(new BN(user1SolAfter.amount.toString()))
           .toString(),
         additionalSolDeposit.toString(),
-        "User SOL balance should decrease by additional deposit amount"
+        "User WSOL token balance should decrease by additional deposit amount"
       );
 
       assert.equal(
@@ -474,7 +433,10 @@ describe("perp-margin-accounts", () => {
 
     it("should deposit additional USDC to an existing margin account", async () => {
       // Get initial balances
-      const usdcVaultBefore = await getAccount(provider.connection, usdcVault);
+      const marginUsdcVaultBefore = await getAccount(
+        provider.connection,
+        marginUsdcVault
+      );
       const user2UsdcBefore = await getAccount(
         provider.connection,
         user2UsdcAccount
@@ -484,12 +446,13 @@ describe("perp-margin-accounts", () => {
 
       // Deposit more USDC
       const additionalUsdcDeposit = new BN(5_000_000); // 5 USDC
+
       await marginProgram.methods
         .depositMargin(additionalUsdcDeposit)
         .accountsStrict({
           marginAccount: user2MarginAccount,
           marginVault: marginVault,
-          vaultTokenAccount: usdcVault,
+          vaultTokenAccount: marginUsdcVault,
           userTokenAccount: user2UsdcAccount,
           owner: user2.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
@@ -499,7 +462,10 @@ describe("perp-margin-accounts", () => {
         .rpc();
 
       // Get balances after deposit
-      const usdcVaultAfter = await getAccount(provider.connection, usdcVault);
+      const marginUsdcVaultAfter = await getAccount(
+        provider.connection,
+        marginUsdcVault
+      );
       const user2UsdcAfter = await getAccount(
         provider.connection,
         user2UsdcAccount
@@ -509,8 +475,8 @@ describe("perp-margin-accounts", () => {
 
       // Verify state changes
       assert.equal(
-        new BN(usdcVaultAfter.amount.toString())
-          .sub(new BN(usdcVaultBefore.amount.toString()))
+        new BN(marginUsdcVaultAfter.amount.toString())
+          .sub(new BN(marginUsdcVaultBefore.amount.toString()))
           .toString(),
         additionalUsdcDeposit.toString(),
         "USDC vault balance should increase by additional deposit amount"
@@ -540,7 +506,7 @@ describe("perp-margin-accounts", () => {
           .accountsStrict({
             marginAccount: user1MarginAccount,
             marginVault: marginVault,
-            vaultTokenAccount: solVault,
+            vaultTokenAccount: marginSolVault,
             userTokenAccount: user1SolAccount,
             owner: user1.publicKey,
             tokenProgram: TOKEN_PROGRAM_ID,
@@ -567,7 +533,7 @@ describe("perp-margin-accounts", () => {
           .accountsStrict({
             marginAccount: user2MarginAccount,
             marginVault: marginVault,
-            vaultTokenAccount: usdcVault,
+            vaultTokenAccount: marginUsdcVault,
             userTokenAccount: user1UsdcAccount,
             owner: user1.publicKey, // This should be user2
             tokenProgram: TOKEN_PROGRAM_ID,
@@ -593,13 +559,21 @@ describe("perp-margin-accounts", () => {
       );
       const excessAmount = new BN(userSolBalance.amount.toString()).addn(1); // Balance + 1
 
+      await wrapSol(
+        user1.publicKey,
+        user1SolAccount,
+        excessAmount.toNumber(),
+        provider,
+        user1
+      );
+
       try {
         await marginProgram.methods
           .depositMargin(excessAmount)
           .accountsStrict({
             marginAccount: user1MarginAccount,
             marginVault: marginVault,
-            vaultTokenAccount: solVault,
+            vaultTokenAccount: marginSolVault,
             userTokenAccount: user1SolAccount,
             owner: user1.publicKey,
             tokenProgram: TOKEN_PROGRAM_ID,

@@ -258,7 +258,7 @@ describe("perp-margin-accounts", () => {
           .accountsStrict({
             marginAccount: user1MarginAccount,
             marginVault: marginVault,
-            vaultTokenAccount: solVault,
+            vaultTokenAccount: marginSolVault,
             userTokenAccount: user1SolAccount,
             owner: user1.publicKey,
             tokenProgram: TOKEN_PROGRAM_ID,
@@ -424,7 +424,7 @@ describe("perp-margin-accounts", () => {
             .accountsStrict({
               marginAccount: user1MarginAccount,
               marginVault: marginVault,
-              vaultTokenAccount: solVault,
+              vaultTokenAccount: marginSolVault,
               userTokenAccount: user1SolAccount,
               owner: user1.publicKey,
               tokenProgram: TOKEN_PROGRAM_ID,
@@ -546,8 +546,8 @@ describe("perp-margin-accounts", () => {
         .claimFees()
         .accountsStrict({
           marginVault: marginVault,
-          marginSolVault: solVault,
-          marginUsdcVault: usdcVault,
+          marginSolVault: marginSolVault,
+          marginUsdcVault: marginUsdcVault,
           adminSolAccount: adminSolAccount,
           adminUsdcAccount: adminUsdcAccount,
           authority: admin.publicKey,
@@ -596,8 +596,8 @@ describe("perp-margin-accounts", () => {
           .claimFees()
           .accountsStrict({
             marginVault: marginVault,
-            marginSolVault: solVault,
-            marginUsdcVault: usdcVault,
+            marginSolVault: marginSolVault,
+            marginUsdcVault: marginUsdcVault,
             adminSolAccount: user1SolAccount,
             adminUsdcAccount: user1UsdcAccount,
             authority: user1.publicKey,
