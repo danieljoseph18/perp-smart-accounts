@@ -72,6 +72,7 @@ pub fn handler(ctx: Context<Initialize>) -> Result<()> {
     pool_state.usdc_reward_vault = ctx.accounts.usdc_reward_vault.key();
     pool_state.accumulated_sol_fees = 0;
     pool_state.accumulated_usdc_fees = 0;
+    pool_state.bump = ctx.bumps.pool_state;
 
     Ok(())
 }

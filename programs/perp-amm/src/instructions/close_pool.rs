@@ -8,7 +8,7 @@ pub struct ClosePool<'info> {
     #[account(
         mut,
         seeds = [b"pool_state".as_ref()],
-        bump,
+        bump = pool_state.bump,
         constraint = pool_state.admin == admin.key() @ VaultError::Unauthorized,
         close = admin
     )]

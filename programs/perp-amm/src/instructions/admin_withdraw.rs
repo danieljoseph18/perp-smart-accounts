@@ -14,7 +14,7 @@ pub struct AdminWithdraw<'info> {
     #[account(
         mut,
         seeds = [b"pool_state".as_ref()],
-        bump
+        bump = pool_state.bump
     )]
     pub pool_state: Account<'info, PoolState>,
 
@@ -51,8 +51,7 @@ pub struct AdminWithdraw<'info> {
 
 pub fn handler(ctx: Context<AdminWithdraw>, amount: u64) -> Result<()> {
     // Manual check: Ensure that either the admin or authority role is calling.
-    if !ctx.accounts.admin.is_signer
-        && ctx.accounts.admin.key() != ctx.accounts.pool_state.admin
+    if ctx.accounts.admin.key() != ctx.accounts.pool_state.admin
         && ctx.accounts.admin.key() != ctx.accounts.pool_state.authority
     {
         return err!(VaultError::Unauthorized);
@@ -73,7 +72,7 @@ pub fn handler(ctx: Context<AdminWithdraw>, amount: u64) -> Result<()> {
 
     // Note: Use the bump value stored on pool_state so that the signer seeds match.
     token::transfer(
-        cpi_ctx.with_signer(&[&[b"pool_state".as_ref(), &[ctx.bumps.pool_state]]]),
+        cpi_ctx.with_signer(&[&[b"pool_state".as_ref(), &[ctx.accounts.pool_state.bump]]]),
         amount,
     )?;
 

@@ -8,7 +8,7 @@ pub struct CloseUserState<'info> {
     #[account(
         mut,
         seeds = [b"pool_state".as_ref()],
-        bump,
+        bump = pool_state.bump,
     )]
     pub pool_state: Account<'info, PoolState>,
 

@@ -11,7 +11,7 @@ pub struct Deposit<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
-    #[account(mut, seeds = [b"pool_state".as_ref()], bump)]
+    #[account(mut, seeds = [b"pool_state".as_ref()], bump = pool_state.bump)]
     pub pool_state: Account<'info, PoolState>,
 
     // Token account, e.g WSOL or USDC
@@ -170,7 +170,7 @@ pub fn handler(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
                 authority: ctx.accounts.pool_state.to_account_info(),
             },
         )
-        .with_signer(&[&[b"pool_state".as_ref(), &[ctx.bumps.pool_state]]]),
+        .with_signer(&[&[b"pool_state".as_ref(), &[ctx.accounts.pool_state.bump]]]),
         lp_to_mint,
     )?;
 

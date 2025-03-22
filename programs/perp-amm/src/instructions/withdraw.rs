@@ -11,7 +11,7 @@ pub struct Withdraw<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
-    #[account(mut, seeds = [b"pool_state".as_ref()], bump)]
+    #[account(mut, seeds = [b"pool_state".as_ref()], bump = pool_state.bump)]
     pub pool_state: Account<'info, PoolState>,
 
     #[account(
@@ -68,7 +68,7 @@ pub struct Withdraw<'info> {
 pub fn handler(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<()> {
     // --- Pre-burn & reward update logic remains unchanged ---
     let pool_state_info = ctx.accounts.pool_state.to_account_info();
-    let pool_state_bump = ctx.bumps.pool_state;
+    let pool_state_bump = ctx.accounts.pool_state.bump;
     let pool_state = &mut ctx.accounts.pool_state;
     let user_state = &mut ctx.accounts.user_state;
 

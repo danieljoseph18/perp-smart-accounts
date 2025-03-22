@@ -49,11 +49,7 @@ pub struct ExecuteWithdrawal<'info> {
     pub user_usdc_account: Account<'info, TokenAccount>,
 
     /// The liquidity pool's state account
-    #[account(
-        mut,
-        seeds = [b"pool_state".as_ref()],
-        bump
-    )]
+    #[account(mut)]
     pub pool_state: Account<'info, PoolState>,
 
     /// The liquidity pool's vault account that matches the token being withdrawn
@@ -98,13 +94,14 @@ pub fn handler(
         usdc_fees_owed,
     )?;
 
-    // Validate balances against locked amounts
-    validate_balances(&ctx.accounts.margin_account, locked_sol, locked_usdc)?;
-
     // Process PnL updates if needed
     if pnl_update != 0 {
+        // Do this before validation to update balances
         process_pnl_update(&mut ctx, pnl_update)?;
     }
+
+    // Validate balances against locked amounts
+    validate_balances(&ctx.accounts.margin_account, locked_sol, locked_usdc)?;
 
     // Process withdrawals
     process_withdrawals(&mut ctx)?;

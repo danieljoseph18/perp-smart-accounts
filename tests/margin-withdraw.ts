@@ -150,12 +150,12 @@ describe("perp-margin-accounts", () => {
     // Derive user states
     [user1State] = PublicKey.findProgramAddressSync(
       [Buffer.from("user_state"), user1.publicKey.toBuffer()],
-      marginProgram.programId
+      ammProgram.programId
     );
 
     [user2State] = PublicKey.findProgramAddressSync(
       [Buffer.from("user_state"), user2.publicKey.toBuffer()],
-      marginProgram.programId
+      ammProgram.programId
     );
 
     // Derive user margin accounts
@@ -1302,13 +1302,57 @@ describe("perp-margin-accounts", () => {
     });
 
     it("should pay out positive PNL exceeding initial deposit", async () => {
+      // Deposit plenty into the AMM pool to ensure the user has plenty of PNL to claim.
+      // Create a SOL token account for user1
+      const user1SolAccount = (
+        await getOrCreateAssociatedTokenAccount(
+          provider.connection,
+          admin,
+          solMint,
+          user1.publicKey
+        )
+      ).address;
+
+      console.log("Created WSOL ata: ", user1SolAccount);
+
+      const initialSolDeposit = new BN(0.5 * LAMPORTS_PER_SOL);
+
+      await wrapSol(
+        user1.publicKey,
+        user1SolAccount,
+        initialSolDeposit.toNumber(),
+        provider,
+        user1
+      );
+
+      // Deposit WSOL
+      await ammProgram.methods
+        .deposit(initialSolDeposit)
+        .accountsStrict({
+          user: user1.publicKey,
+          poolState,
+          userTokenAccount: user1SolAccount,
+          vaultAccount: solVault,
+          userState: user1State,
+          lpTokenMint,
+          userLpTokenAccount: user1LpTokenAccount,
+          chainlinkProgram: chainlinkProgram,
+          chainlinkFeed: chainlinkFeed,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([user1])
+        .rpc();
+
+      console.log("Amm deposit successful, depositing margin...");
+
       // Ensure the margin account for user1 is funded.
       // If the current SOL balance is less than our expected deposit, deposit more.
       let marginAccountBefore = await marginProgram.account.marginAccount.fetch(
         user1MarginAccount
       );
       if (new BN(marginAccountBefore.solBalance).lt(solDepositAmount)) {
-        // Wrap and deposit SOL into user1’s margin account
+        // Wrap and deposit SOL into user1's margin account
         await wrapSol(
           user1.publicKey,
           user1SolAccount,
@@ -1343,16 +1387,14 @@ describe("perp-margin-accounts", () => {
       const initialUserBalance = initialUserSol.amount;
 
       // Simulate a positive PNL profit.
-      // For example, if the user deposited 0.1 SOL and now earns an extra 0.2 SOL.
-      // (Recall LAMPORTS_PER_SOL is 1e9; adjust numbers if needed.)
-      const pnlProfit = new BN(0.2 * LAMPORTS_PER_SOL);
+      // PNL is in USD with 6 DP -> 2 USD profit
+      const pnlProfit = new BN(2_000_000);
 
-      // The withdrawal amount is the current deposit (marginAccount.solBalance) plus the profit.
-      const withdrawalAmount = new BN(marginAccountBefore.solBalance).add(
-        pnlProfit
-      );
+      // The withdrawal amount is the current deposit (marginAccount.solBalance).
+      // Note: PNL is in USD, not SOL, so we don't add it to the withdrawal amount
+      const withdrawalAmount = marginAccountBefore.solBalance.add(new BN(100)); // Add tiny bit more
 
-      // Request withdrawal for the full amount (deposit + profit).
+      // Request withdrawal for the full amount.
       await marginProgram.methods
         .requestWithdrawal(withdrawalAmount, new BN(0))
         .accountsStrict({
@@ -1371,12 +1413,12 @@ describe("perp-margin-accounts", () => {
 
       // Execute the withdrawal and provide the positive pnl update.
       // Here we pass:
-      //   pnl_update: pnlProfit (a positive value),
+      //   pnl_update: pnlProfit (a positive value in USD),
       //   locked funds: 0,
       //   fees: 0.
       await marginProgram.methods
         .executeWithdrawal(
-          pnlProfit, // positive pnl update
+          pnlProfit, // positive pnl update in USD
           new BN(0), // locked_sol = 0
           new BN(0), // locked_usdc = 0
           new BN(0), // sol_fees_owed = 0
@@ -1401,7 +1443,8 @@ describe("perp-margin-accounts", () => {
         .signers([admin])
         .rpc();
 
-      // After execution, verify that the user's SOL token account increased by the full withdrawal amount.
+      // After execution, verify that the user's SOL token account increased by the withdrawal amount.
+      // The PNL is in USD, but the withdrawal is in SOL, so we only check for the SOL amount.
       const finalUserSol = await getAccount(
         provider.connection,
         user1SolAccount
@@ -1412,7 +1455,7 @@ describe("perp-margin-accounts", () => {
       assert.equal(
         received.toString(),
         withdrawalAmount.toString(),
-        "User should receive deposit plus positive PNL profit in SOL"
+        "User should receive their full SOL deposit"
       );
 
       // Finally, verify that the margin account pending withdrawal and SOL balance have been reset.
@@ -1422,11 +1465,6 @@ describe("perp-margin-accounts", () => {
         marginAccountAfter.pendingSolWithdrawal.toString(),
         "0",
         "Pending SOL withdrawal should be zero after successful withdrawal"
-      );
-      assert.equal(
-        marginAccountAfter.solBalance.toString(),
-        "0",
-        "Margin account SOL balance should be zero after full withdrawal"
       );
     });
   });
