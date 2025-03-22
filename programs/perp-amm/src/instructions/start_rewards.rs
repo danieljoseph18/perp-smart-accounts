@@ -9,7 +9,7 @@ pub struct StartRewards<'info> {
     #[account(
         mut,
         seeds = [b"pool_state".as_ref()],
-        bump = pool_state.bump,
+        bump,
         constraint = pool_state.admin == admin.key() @ VaultError::Unauthorized
     )]
     pub pool_state: Account<'info, PoolState>,

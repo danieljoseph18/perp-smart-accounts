@@ -14,7 +14,7 @@ pub struct AdminWithdraw<'info> {
     #[account(
         mut,
         seeds = [b"pool_state".as_ref()],
-        bump = pool_state.bump
+        bump
     )]
     pub pool_state: Account<'info, PoolState>,
 
@@ -72,7 +72,7 @@ pub fn handler(ctx: Context<AdminWithdraw>, amount: u64) -> Result<()> {
 
     // Note: Use the bump value stored on pool_state so that the signer seeds match.
     token::transfer(
-        cpi_ctx.with_signer(&[&[b"pool_state".as_ref(), &[ctx.accounts.pool_state.bump]]]),
+        cpi_ctx.with_signer(&[&[b"pool_state".as_ref(), &[ctx.bumps.pool_state]]]),
         amount,
     )?;
 

@@ -10,7 +10,7 @@ pub struct ClaimRewards<'info> {
     #[account(
         mut,
         seeds = [b"pool_state".as_ref()],
-        bump = pool_state.bump
+        bump
     )]
     pub pool_state: Account<'info, PoolState>,
 
@@ -51,7 +51,7 @@ pub fn handler(ctx: Context<ClaimRewards>) -> Result<()> {
     let total_rewards_deposited = ctx.accounts.pool_state.total_rewards_deposited;
     let total_rewards_claimed = ctx.accounts.pool_state.total_rewards_claimed;
     let vault_amount = ctx.accounts.usdc_reward_vault.amount;
-    let pool_state_bump = ctx.accounts.pool_state.bump;
+    let pool_state_bump = ctx.bumps.pool_state;
 
     // Do validation checks with stored values
     require!(now >= reward_start_time, VaultError::RewardsNotStarted);

@@ -9,7 +9,7 @@ pub struct ClaimFees<'info> {
     #[account(
         mut,
         seeds = [b"pool_state".as_ref()],
-        bump = pool_state.bump,
+        bump,
         constraint = pool_state.admin == admin.key() @ VaultError::Unauthorized
     )]
     pub pool_state: Account<'info, PoolState>,
@@ -47,7 +47,6 @@ pub struct ClaimFees<'info> {
 
 pub fn handler(ctx: Context<ClaimFees>) -> Result<()> {
     let pool_state = &mut ctx.accounts.pool_state;
-    let bump = pool_state.bump;
 
     // Transfer accumulated SOL fees if any
     if pool_state.accumulated_sol_fees > 0 {
@@ -61,7 +60,7 @@ pub fn handler(ctx: Context<ClaimFees>) -> Result<()> {
             },
         );
         token::transfer(
-            cpi_ctx_sol.with_signer(&[&[b"pool_state".as_ref(), &[bump]]]),
+            cpi_ctx_sol.with_signer(&[&[b"pool_state".as_ref(), &[ctx.bumps.pool_state]]]),
             sol_amount,
         )?;
 
@@ -82,7 +81,7 @@ pub fn handler(ctx: Context<ClaimFees>) -> Result<()> {
             },
         );
         token::transfer(
-            cpi_ctx_usdc.with_signer(&[&[b"pool_state".as_ref(), &[bump]]]),
+            cpi_ctx_usdc.with_signer(&[&[b"pool_state".as_ref(), &[ctx.bumps.pool_state]]]),
             usdc_amount,
         )?;
 

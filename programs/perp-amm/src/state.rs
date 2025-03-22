@@ -79,9 +79,6 @@ pub struct PoolState {
 
     /// Accumulated USDC fees from deposits/withdrawals (6 decimals)
     pub accumulated_usdc_fees: u64,
-
-    /// Bump
-    pub bump: u8,
 }
 
 impl PoolState {
@@ -104,8 +101,7 @@ impl PoolState {
         + 16                  // cumulative_reward_per_token
         + 8                   // last_distribution_time
         + 8                   // accumulated_sol_fees
-        + 8                   // accumulated_usdc_fees
-        + 1; // bump
+        + 8; // accumulated_usdc_fees
 }
 
 /// UserState stores user-specific info (in practice often combined into a single PDA).
