@@ -18,8 +18,11 @@ pub struct StartRewards<'info> {
     #[account(mut)]
     pub admin_usdc_account: Account<'info, TokenAccount>,
 
-    /// Program's USDC reward vault
-    #[account(mut)]
+    /// Program's USDC reward vault (PDA)
+    #[account(
+        mut,
+        constraint = usdc_reward_vault.key() == pool_state.usdc_reward_vault @ VaultError::InvalidRewardVault
+    )]
     pub usdc_reward_vault: Account<'info, TokenAccount>,
 
     pub token_program: Program<'info, Token>,

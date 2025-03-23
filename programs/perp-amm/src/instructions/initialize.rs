@@ -15,7 +15,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = admin,
-        space = 8 + std::mem::size_of::<PoolState>(),
+        space = 8 + PoolState::LEN,
         seeds = [b"pool_state".as_ref()],
         bump
     )]

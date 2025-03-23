@@ -396,7 +396,7 @@ export async function setupAmmProgram(
         solVault: solVault.address,
         usdcVault: usdcVault.address,
         usdcMint: usdcMint,
-        usdcRewardVault: usdcVault.address, // Using same vault for simplicity
+        usdcRewardVault: usdcVault.address, // Using same vault for rewards in tests
         lpTokenMint,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
