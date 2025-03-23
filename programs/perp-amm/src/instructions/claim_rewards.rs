@@ -24,7 +24,9 @@ pub struct ClaimRewards<'info> {
 
     #[account(
         mut,
-        constraint = usdc_reward_vault.key() == pool_state.usdc_reward_vault,
+        seeds = [b"usdc_reward_vault", pool_state.key().as_ref()],
+        bump,
+        constraint = usdc_reward_vault.key() == pool_state.usdc_reward_vault @ VaultError::InvalidRewardVault,
         constraint = usdc_reward_vault.owner == pool_state.key() @ VaultError::InvalidOwner
     )]
     pub usdc_reward_vault: Account<'info, TokenAccount>,
@@ -106,7 +108,7 @@ pub fn handler(ctx: Context<ClaimRewards>) -> Result<()> {
         Transfer {
             from: ctx.accounts.usdc_reward_vault.to_account_info(),
             to: ctx.accounts.user_usdc_account.to_account_info(),
-            authority: pool_state.to_account_info(), // Use pool_state reference instead
+            authority: pool_state.to_account_info(), // Pool state is the authority for the reward vault
         },
     );
     token::transfer(

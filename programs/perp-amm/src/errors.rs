@@ -30,4 +30,6 @@ pub enum VaultError {
     InvalidTokenAmount,
     #[msg("Previous period has not ended.")]
     PreviousPeriodNotEnded,
+    #[msg("Invalid reward vault provided.")]
+    InvalidRewardVault,
 }

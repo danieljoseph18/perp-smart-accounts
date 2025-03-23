@@ -1,5 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
+import BN from "bn.js";
 import { PerpAmm } from "../target/types/perp_amm";
 import { PerpMarginAccounts } from "../target/types/perp_margin_accounts";
 import { PublicKey, Keypair, SystemProgram } from "@solana/web3.js";
@@ -10,98 +11,112 @@ import {
 } from "@solana/spl-token";
 import * as dotenv from "dotenv";
 
-// Load environment variables
 dotenv.config();
 
-// Constants
+// -------------------------
+// Constants & Chainlink IDs
+// -------------------------
 const CHAINLINK_PROGRAM_ID = new PublicKey(
   "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny"
 );
-
 const CHAINLINK_SOL_FEED = process.env.IS_DEVNET
   ? new PublicKey("99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR")
   : new PublicKey("CH31Xns5z3M1cTAbKW34jcxPPciazARpijcHj9rxtemt");
 
-const WITHDRAWAL_TIMELOCK = 1; // 1 seconds
+const WITHDRAWAL_TIMELOCK = 1; // seconds
 
+// -------------------------
+// Helper: Get or create USDC mint
+// -------------------------
+async function getUsdcMint(
+  provider: anchor.AnchorProvider,
+  admin: Keypair
+): Promise<PublicKey> {
+  if (process.env.IS_DEVNET) {
+    // Use a fixed devnet USDC mint if indicated.
+    return new PublicKey("7ggkvgP7jijLpQBV5GXcqugTMrc2JqDi9tiCH36SVg7A");
+  } else {
+    // Create a new USDC mint on localnet (with 6 decimals).
+    const usdcMint = await createMint(
+      provider.connection,
+      admin,
+      admin.publicKey,
+      null,
+      6
+    );
+    console.log("Created USDC mint:", usdcMint.toString());
+    return usdcMint;
+  }
+}
+
+// -------------------------
+// Initialize Margin Program
+// -------------------------
 async function initializeMarginProgram(
   provider: anchor.AnchorProvider,
-  program: Program<PerpMarginAccounts>
+  program: Program<PerpMarginAccounts>,
+  solMint: PublicKey,
+  usdcMint: PublicKey,
+  chainlinkProgram: PublicKey,
+  chainlinkFeed: PublicKey,
+  admin: Keypair
 ) {
   console.log("\n=== Initializing Margin Program ===");
 
-  // Set up token mints
-  const solMint = new PublicKey("So11111111111111111111111111111111111111112");
-  const usdcMint = process.env.IS_DEVNET
-    ? new PublicKey("7ggkvgP7jijLpQBV5GXcqugTMrc2JqDi9tiCH36SVg7A")
-    : new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
-
-  // Derive PDAs
+  // Derive the PDA for the margin vault using seed "margin_vault"
   const [marginVault] = PublicKey.findProgramAddressSync(
     [Buffer.from("margin_vault")],
     program.programId
   );
 
-  const [solVault] = PublicKey.findProgramAddressSync(
-    [Buffer.from("sol_vault")],
-    program.programId
-  );
-
-  const [usdcVault] = PublicKey.findProgramAddressSync(
-    [Buffer.from("usdc_vault")],
-    program.programId
-  );
-
   console.log("Margin Vault PDA:", marginVault.toString());
-  console.log("SOL Vault PDA:", solVault.toString());
-  console.log("USDC Vault PDA:", usdcVault.toString());
 
-  // Create token accounts for the vaults
-  console.log("Creating vault token accounts...");
+  // Create associated token accounts for the vault (with the PDA as owner)
+  console.log("Creating margin program vault token accounts...");
   const solVaultAccount = await getOrCreateAssociatedTokenAccount(
     provider.connection,
-    (provider.wallet as anchor.Wallet).payer,
+    admin, // payer & signer
     solMint,
     marginVault,
     true
   );
-
   const usdcVaultAccount = await getOrCreateAssociatedTokenAccount(
     provider.connection,
-    (provider.wallet as anchor.Wallet).payer,
+    admin,
     usdcMint,
     marginVault,
     true
   );
 
-  console.log("SOL Vault Token Account:", solVaultAccount.address.toString());
-  console.log("USDC Vault Token Account:", usdcVaultAccount.address.toString());
+  console.log("Margin Program SOL Vault:", solVaultAccount.address.toString());
+  console.log(
+    "Margin Program USDC Vault:",
+    usdcVaultAccount.address.toString()
+  );
 
   try {
     await program.methods
-      .initialize(
-        new anchor.BN(WITHDRAWAL_TIMELOCK),
-        CHAINLINK_PROGRAM_ID,
-        CHAINLINK_SOL_FEED
-      )
+      .initialize(new BN(WITHDRAWAL_TIMELOCK), chainlinkProgram, chainlinkFeed)
       .accountsStrict({
-        authority: provider.wallet.publicKey,
+        authority: admin.publicKey,
         marginVault,
-        solVault: solVaultAccount.address,
-        usdcVault: usdcVaultAccount.address,
+        marginSolVault: solVaultAccount.address,
+        marginUsdcVault: usdcVaultAccount.address,
         systemProgram: SystemProgram.programId,
         tokenProgram: TOKEN_PROGRAM_ID,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY,
       })
+      .signers([admin])
       .rpc();
 
     console.log("✓ Margin program initialized successfully!");
+
     return {
       marginVault,
-      solVault: solVaultAccount.address,
-      usdcVault: usdcVaultAccount.address,
-      chainlinkProgram: CHAINLINK_PROGRAM_ID,
-      chainlinkFeed: CHAINLINK_SOL_FEED,
+      marginSolVault: solVaultAccount.address,
+      marginUsdcVault: usdcVaultAccount.address,
+      chainlinkProgram,
+      chainlinkFeed,
     };
   } catch (error) {
     console.error("Failed to initialize margin program:", error);
@@ -109,37 +124,36 @@ async function initializeMarginProgram(
   }
 }
 
+// -------------------------
+// Initialize Perp AMM Program
+// -------------------------
 async function initializePerpAmm(
   provider: anchor.AnchorProvider,
   program: Program<PerpAmm>,
-  marginProgramId: PublicKey
+  marginProgramId: PublicKey,
+  usdcMint: PublicKey
 ) {
   console.log("\n=== Initializing Perp AMM Program ===");
 
-  // Set up token mints
+  // For AMM we use the wrapped SOL mint (it never changes)
   const solMint = new PublicKey("So11111111111111111111111111111111111111112");
-  const usdcMint = process.env.IS_DEVNET
-    ? new PublicKey("7ggkvgP7jijLpQBV5GXcqugTMrc2JqDi9tiCH36SVg7A")
-    : new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
-  // Find pool state PDA
+  // Derive the pool state PDA using seed "pool_state"
   const [poolState] = PublicKey.findProgramAddressSync(
     [Buffer.from("pool_state")],
     program.programId
   );
-
   console.log("Pool State PDA:", poolState.toString());
 
-  // Create vault accounts
-  const solVault = await getOrCreateAssociatedTokenAccount(
+  // Create associated token accounts for the pool state vaults
+  const solVaultAccount = await getOrCreateAssociatedTokenAccount(
     provider.connection,
     (provider.wallet as anchor.Wallet).payer,
     solMint,
     poolState,
     true
   );
-
-  const usdcVault = await getOrCreateAssociatedTokenAccount(
+  const usdcVaultAccount = await getOrCreateAssociatedTokenAccount(
     provider.connection,
     (provider.wallet as anchor.Wallet).payer,
     usdcMint,
@@ -147,10 +161,10 @@ async function initializePerpAmm(
     true
   );
 
-  console.log("SOL Vault:", solVault.address.toString());
-  console.log("USDC Vault:", usdcVault.address.toString());
+  console.log("Pool State SOL Vault:", solVaultAccount.address.toString());
+  console.log("Pool State USDC Vault:", usdcVaultAccount.address.toString());
 
-  // Create LP token mint
+  // Create an LP token mint for the AMM liquidity provider tokens.
   const lpTokenMintKeypair = Keypair.generate();
   await createMint(
     provider.connection,
@@ -160,7 +174,6 @@ async function initializePerpAmm(
     9,
     lpTokenMintKeypair
   );
-
   console.log("LP Token Mint:", lpTokenMintKeypair.publicKey.toString());
 
   try {
@@ -170,22 +183,24 @@ async function initializePerpAmm(
         admin: provider.wallet.publicKey,
         authority: marginProgramId,
         poolState,
-        solVault: solVault.address,
-        usdcVault: usdcVault.address,
+        solVault: solVaultAccount.address,
+        usdcVault: usdcVaultAccount.address,
+        usdcMint: usdcMint,
+        usdcRewardVault: usdcVaultAccount.address, // FIXME: Replace with a USDC Reward Vault
         lpTokenMint: lpTokenMintKeypair.publicKey,
-        usdcRewardVault: usdcVault.address,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY,
       })
-      .signers([lpTokenMintKeypair])
+      .signers([provider.wallet.payer, lpTokenMintKeypair])
       .rpc();
 
     console.log("✓ Perp AMM program initialized successfully!");
+
     return {
       poolState,
-      solVault: solVault.address,
-      usdcVault: usdcVault.address,
+      solVault: solVaultAccount.address,
+      usdcVault: usdcVaultAccount.address,
       lpTokenMint: lpTokenMintKeypair.publicKey,
     };
   } catch (error) {
@@ -194,14 +209,25 @@ async function initializePerpAmm(
   }
 }
 
+// -------------------------
+// Main deployment function
+// -------------------------
 async function main() {
   console.log("Starting deployment process...");
 
-  // Configure the client
+  // Configure the provider and set it as the default.
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
-  // Initialize both programs
+  // Use the provider wallet as the admin signer.
+  const admin = (provider.wallet as anchor.Wallet).payer;
+
+  // Use the wrapped SOL address (which is fixed).
+  const solMint = new PublicKey("So11111111111111111111111111111111111111112");
+  // Get or create the USDC mint (create a new one for localnet).
+  const usdcMint = await getUsdcMint(provider, admin);
+
+  // Get the program interfaces from the workspace.
   const marginProgram = anchor.workspace
     .PerpMarginAccounts as Program<PerpMarginAccounts>;
   const perpAmmProgram = anchor.workspace.PerpAmm as Program<PerpAmm>;
@@ -209,24 +235,37 @@ async function main() {
   console.log("Margin Program ID:", marginProgram.programId.toString());
   console.log("Perp AMM Program ID:", perpAmmProgram.programId.toString());
 
-  // Initialize programs in sequence
-  const marginAccounts = await initializeMarginProgram(provider, marginProgram);
+  // Initialize the margin program (create the vaults, etc.)
+  const marginAccounts = await initializeMarginProgram(
+    provider,
+    marginProgram,
+    solMint,
+    usdcMint,
+    CHAINLINK_PROGRAM_ID,
+    CHAINLINK_SOL_FEED,
+    admin
+  );
+  // Initialize the Perp AMM program (create pool state, vaults, and LP token mint)
   const perpAmmAccounts = await initializePerpAmm(
     provider,
     perpAmmProgram,
-    marginProgram.programId
+    marginProgram.programId,
+    usdcMint
   );
 
-  // Log all important addresses
+  // Print a deployment summary
   console.log("\n=== Deployment Summary ===");
   console.log("Margin Program:");
   console.log("- Margin Vault:", marginAccounts.marginVault.toString());
-  console.log("- SOL Vault:", marginAccounts.solVault.toString());
-  console.log("- USDC Vault:", marginAccounts.usdcVault.toString());
-  console.log("\nPerp AMM Program:");
+  console.log("- Margin SOL Vault:", marginAccounts.marginSolVault.toString());
+  console.log(
+    "- Margin USDC Vault:",
+    marginAccounts.marginUsdcVault.toString()
+  );
+  console.log("Perp AMM Program:");
   console.log("- Pool State:", perpAmmAccounts.poolState.toString());
-  console.log("- SOL Vault:", perpAmmAccounts.solVault.toString());
-  console.log("- USDC Vault:", perpAmmAccounts.usdcVault.toString());
+  console.log("- Pool SOL Vault:", perpAmmAccounts.solVault.toString());
+  console.log("- Pool USDC Vault:", perpAmmAccounts.usdcVault.toString());
   console.log("- LP Token Mint:", perpAmmAccounts.lpTokenMint.toString());
 }
 
