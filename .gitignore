@@ -6,3 +6,5 @@ node_modules
 test-ledger
 .yarn
 .env
+perp-amm-keypair.json
+perp-margin-keypair.json
