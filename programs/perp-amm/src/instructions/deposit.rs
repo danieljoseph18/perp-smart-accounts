@@ -128,23 +128,30 @@ pub fn handler(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
     // 6. Compute initial Assets Under Management (AUM).
     let total_sol_usd = get_sol_usd_value(pool_state.sol_deposited, pool_state.sol_usd_price)?;
     let initial_aum = total_sol_usd
-        .checked_add(pool_state.usdc_deposited.checked_mul(100).ok_or(VaultError::MathError)?)
+        .checked_add(
+            pool_state
+                .usdc_deposited
+                .checked_mul(100)
+                .ok_or(VaultError::MathError)?,
+        )
         .ok_or(VaultError::MathError)?;
 
     // 7. Update vault deposited amounts and compute the USD value of the deposit.
-    let deposit_usd = if ctx.accounts.vault_account.key() == pool_state.sol_vault {
+    let deposit_usd: u128 = if ctx.accounts.vault_account.key() == pool_state.sol_vault {
         pool_state.sol_deposited = pool_state
             .sol_deposited
             .checked_add(deposit_amount)
             .ok_or(VaultError::MathError)?;
-        get_sol_usd_value(deposit_amount, pool_state.sol_usd_price)?
+        get_sol_usd_value(deposit_amount, pool_state.sol_usd_price)? as u128
     } else if ctx.accounts.vault_account.key() == pool_state.usdc_vault {
         pool_state.usdc_deposited = pool_state
             .usdc_deposited
             .checked_add(deposit_amount)
             .ok_or(VaultError::MathError)?;
         // Convert USDC (6 decimals) to USD (8 decimals)
-        deposit_amount.checked_mul(100).ok_or(VaultError::MathError)?
+        (deposit_amount as u128)
+            .checked_mul(100)
+            .ok_or(VaultError::MathError)?
     } else {
         return err!(VaultError::InvalidTokenMint);
     };
@@ -153,13 +160,13 @@ pub fn handler(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
     let lp_supply = ctx.accounts.lp_token_mint.supply;
     let lp_to_mint = if lp_supply == 0 {
         // USD value in 10^8, LP tokens are 10^9 so we mul by 10
-        deposit_usd.checked_mul(10).ok_or(VaultError::MathError)?
+        (deposit_usd.checked_mul(10).ok_or(VaultError::MathError)?) as u64
     } else {
-        deposit_usd
-            .checked_mul(lp_supply)
+        (deposit_usd
+            .checked_mul(lp_supply as u128)
             .ok_or(VaultError::MathError)?
-            .checked_div(initial_aum.max(1))
-            .ok_or(VaultError::MathError)?
+            .checked_div(initial_aum.max(1) as u128)
+            .ok_or(VaultError::MathError)?) as u64
     };
 
     // 9. Mint LP tokens to the user.

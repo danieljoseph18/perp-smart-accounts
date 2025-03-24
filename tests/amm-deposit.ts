@@ -407,5 +407,137 @@ describe("perp-amm (with configuration persistence)", () => {
         );
       }
     });
+
+    it("should allow depositing twice in a row", async () => {
+      // Create a SOL token account for user1
+      const user1SolAccount = (
+        await getOrCreateAssociatedTokenAccount(
+          provider.connection,
+          admin,
+          solMint,
+          user1.publicKey
+        )
+      ).address;
+
+      // First deposit amount (smaller than initial deposit)
+      const firstDepositAmount = new BN(LAMPORTS_PER_SOL / 2);
+      
+      // Wrap SOL for the first deposit
+      await wrapSol(
+        user1.publicKey,
+        user1SolAccount,
+        firstDepositAmount.toNumber(),
+        provider,
+        user1
+      );
+
+      // Get balances before first deposit
+      const solVaultBefore = await getAccount(provider.connection, solVault);
+      const lpTokenSupplyBefore = (
+        await getMint(provider.connection, lpTokenMint)
+      ).supply;
+      const userStateBefore = await program.account.userState.fetch(user1State);
+      const lpBalanceBefore = userStateBefore.lpTokenBalance;
+
+      // Execute first deposit
+      await program.methods
+        .deposit(firstDepositAmount)
+        .accountsStrict({
+          user: user1.publicKey,
+          poolState,
+          userTokenAccount: user1SolAccount,
+          vaultAccount: solVault,
+          userState: user1State,
+          lpTokenMint,
+          userLpTokenAccount: user1LpTokenAccount,
+          chainlinkProgram: chainlinkProgram,
+          chainlinkFeed: chainlinkFeed,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([user1])
+        .rpc();
+
+      // Get balances after first deposit
+      const solVaultAfterFirst = await getAccount(provider.connection, solVault);
+      const lpTokenSupplyAfterFirst = (
+        await getMint(provider.connection, lpTokenMint)
+      ).supply;
+      const userStateAfterFirst = await program.account.userState.fetch(user1State);
+      const lpBalanceAfterFirst = userStateAfterFirst.lpTokenBalance;
+
+      // Assert first deposit was successful
+      assert.equal(
+        new BN(solVaultAfterFirst.amount.toString())
+          .sub(new BN(solVaultBefore.amount.toString()))
+          .toString(),
+        firstDepositAmount.toString(),
+        "SOL vault balance should increase by first deposit amount"
+      );
+      
+      assert.isTrue(
+        lpBalanceAfterFirst.gt(lpBalanceBefore),
+        "User LP token balance should increase after first deposit"
+      );
+
+      // Second deposit amount
+      const secondDepositAmount = new BN(LAMPORTS_PER_SOL / 4);
+      
+      // Wrap SOL for the second deposit
+      await wrapSol(
+        user1.publicKey,
+        user1SolAccount,
+        secondDepositAmount.toNumber(),
+        provider,
+        user1
+      );
+
+      // Execute second deposit
+      await program.methods
+        .deposit(secondDepositAmount)
+        .accountsStrict({
+          user: user1.publicKey,
+          poolState,
+          userTokenAccount: user1SolAccount,
+          vaultAccount: solVault,
+          userState: user1State,
+          lpTokenMint,
+          userLpTokenAccount: user1LpTokenAccount,
+          chainlinkProgram: chainlinkProgram,
+          chainlinkFeed: chainlinkFeed,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([user1])
+        .rpc();
+
+      // Get balances after second deposit
+      const solVaultAfterSecond = await getAccount(provider.connection, solVault);
+      const userStateAfterSecond = await program.account.userState.fetch(user1State);
+      const lpTokenSupplyAfterSecond = (
+        await getMint(provider.connection, lpTokenMint)
+      ).supply;
+
+      // Assert second deposit was successful
+      assert.equal(
+        new BN(solVaultAfterSecond.amount.toString())
+          .sub(new BN(solVaultAfterFirst.amount.toString()))
+          .toString(),
+        secondDepositAmount.toString(),
+        "SOL vault balance should increase by second deposit amount"
+      );
+      
+      assert.isTrue(
+        userStateAfterSecond.lpTokenBalance.gt(lpBalanceAfterFirst),
+        "User LP token balance should increase after second deposit"
+      );
+      
+      assert.isTrue(
+        new BN(lpTokenSupplyAfterSecond.toString()).gt(
+          new BN(lpTokenSupplyAfterFirst.toString())
+        ),
+        "LP token supply should increase after second deposit"
+      );
+    });
   });
 });

@@ -112,21 +112,28 @@ pub fn handler(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<()> {
     }
     let total_sol_usd = get_sol_usd_value(pool_state.sol_deposited, pool_state.sol_usd_price)?;
     let current_aum = total_sol_usd
-        .checked_add(pool_state.usdc_deposited.checked_mul(100).ok_or(VaultError::MathError)?)
+        .checked_add(
+            pool_state
+                .usdc_deposited
+                .checked_mul(100)
+                .ok_or(VaultError::MathError)?,
+        )
         .ok_or(VaultError::MathError)?;
 
     let lp_supply = ctx.accounts.lp_token_mint.supply.max(1);
-    let withdrawal_usd_value = lp_token_amount
-        .checked_mul(current_aum)
+    let withdrawal_usd_value: u128 = (lp_token_amount as u128)
+        .checked_mul(current_aum as u128)
         .ok_or(VaultError::MathError)?
-        .checked_div(lp_supply)
+        .checked_div(lp_supply as u128)
         .ok_or(VaultError::MathError)?;
 
     let token_amount = if ctx.accounts.vault_account.key() == sol_vault {
-        get_sol_amount_from_usd(withdrawal_usd_value, pool_state.sol_usd_price)?
+        get_sol_amount_from_usd(withdrawal_usd_value as u64, pool_state.sol_usd_price)?
     } else if ctx.accounts.vault_account.key() == usdc_vault {
         // Convert USD (8 decimals) to USDC (6 decimals)
-        withdrawal_usd_value.checked_div(100).ok_or(VaultError::MathError)?
+        (withdrawal_usd_value
+            .checked_div(100)
+            .ok_or(VaultError::MathError)?) as u64
     } else {
         return err!(VaultError::InvalidTokenMint);
     };
