@@ -33,6 +33,7 @@ pub struct PoolState {
     pub sol_vault: Pubkey,
 
     /// USDC vault account (USDC uses 6 decimals, so 1 USDC = 1_000_000)
+    /// Note: While USDC uses 6 decimals, USD values are handled with 8 decimals (1 USD = 100_000_000)
     pub usdc_vault: Pubkey,
 
     pub usdc_mint: Pubkey,
@@ -44,9 +45,11 @@ pub struct PoolState {
     pub sol_deposited: u64,
 
     /// How many USDC tokens are currently deposited in total (6 decimals, 1 USDC = 1_000_000)
+    /// Note: USD values derived from USDC use 8 decimals (1 USD = 100_000_000)
     pub usdc_deposited: u64,
 
     /// USDC earned per second per LP token (6 decimals)
+    /// Note: All USDC amounts use 6 decimals, even though USD values use 8 decimals
     pub tokens_per_interval: u64,
 
     /// Timestamp when current reward distribution started
@@ -62,9 +65,11 @@ pub struct PoolState {
     pub sol_usd_price: i128,
 
     /// How many USDC tokens the admin deposited for this reward period (6 decimals)
+    /// Note: These are raw USDC amounts, not USD values
     pub total_rewards_deposited: u64,
 
     /// How many USDC have actually been claimed by users so far (6 decimals)
+    /// Note: These are raw USDC amounts, not USD values
     pub total_rewards_claimed: u64,
 
     pub cumulative_reward_per_token: u128, // Using u128 for precision
@@ -78,6 +83,7 @@ pub struct PoolState {
     pub accumulated_sol_fees: u64,
 
     /// Accumulated USDC fees from deposits/withdrawals (6 decimals)
+    /// Note: These are raw USDC amounts, not USD values (which use 8 decimals)
     pub accumulated_usdc_fees: u64,
 }
 
@@ -141,18 +147,18 @@ impl UserState {
 ///   - sol_amount: Amount of SOL with 9 decimals (1 SOL = 1_000_000_000)
 ///   - sol_usd_price: Chainlink price with 8 decimals
 /// Output:
-///   - USD value with 6 decimals (1 USD = 1_000_000)
+///   - USD value with 8 decimals (1 USD = 100_000_000)
 pub fn get_sol_usd_value(sol_amount: u64, sol_usd_price: i128) -> Result<u64> {
     // Convert SOL to USD with proper decimal handling:
     // 1. Multiply SOL (9 decimals) by price (8 decimals)
     // 2. Divide by 10^8 (Chainlink decimals) to get to raw USD
-    // 3. Divide by 1000 (9 - 6 = 3) to convert to 6 decimal USD
+    // 3. Divide by 10 (9 - 8 = 1) to convert from 9 to 8 decimals
     let usd = (sol_amount as u128)
         .checked_mul(sol_usd_price as u128)
         .unwrap_or(0)
         .checked_div(100_000_000) // Remove Chainlink's 8 decimals
         .unwrap_or(0)
-        .checked_div(1000) // Convert from 9 to 6 decimals
+        .checked_div(10) // Convert from 9 to 8 decimals
         .unwrap_or(0);
 
     Ok(usd as u64)
@@ -161,7 +167,7 @@ pub fn get_sol_usd_value(sol_amount: u64, sol_usd_price: i128) -> Result<u64> {
 /// Helper function for USD -> SOL conversions using the `sol_usd_price` from Chainlink.
 ///
 /// Input:
-///   - usd_value: USD amount with 6 decimals (1 USD = 1_000_000)
+///   - usd_value: USD amount with 8 decimals (1 USD = 100_000_000)
 ///   - sol_usd_price: Chainlink price with 8 decimals
 /// Output:
 ///   - SOL amount with 9 decimals (1 SOL = 1_000_000_000)
@@ -169,7 +175,7 @@ pub fn get_sol_amount_from_usd(usd_value: u64, sol_usd_price: i128) -> Result<u6
     let sol = (usd_value as u128)
         .checked_mul(100_000_000) // Add Chainlink's 8 decimals
         .unwrap_or(0)
-        .checked_mul(1000) // Convert from 6 to 9 decimals
+        .checked_mul(10) // Convert from 8 to 9 decimals
         .unwrap_or(0)
         .checked_div(sol_usd_price as u128)
         .unwrap_or(0);

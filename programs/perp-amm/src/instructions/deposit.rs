@@ -128,7 +128,7 @@ pub fn handler(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
     // 6. Compute initial Assets Under Management (AUM).
     let total_sol_usd = get_sol_usd_value(pool_state.sol_deposited, pool_state.sol_usd_price)?;
     let initial_aum = total_sol_usd
-        .checked_add(pool_state.usdc_deposited)
+        .checked_add(pool_state.usdc_deposited.checked_mul(100).ok_or(VaultError::MathError)?)
         .ok_or(VaultError::MathError)?;
 
     // 7. Update vault deposited amounts and compute the USD value of the deposit.
@@ -143,7 +143,8 @@ pub fn handler(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
             .usdc_deposited
             .checked_add(deposit_amount)
             .ok_or(VaultError::MathError)?;
-        deposit_amount
+        // Convert USDC (6 decimals) to USD (8 decimals)
+        deposit_amount.checked_mul(100).ok_or(VaultError::MathError)?
     } else {
         return err!(VaultError::InvalidTokenMint);
     };
@@ -151,7 +152,8 @@ pub fn handler(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
     // 8. Calculate how many LP tokens to mint.
     let lp_supply = ctx.accounts.lp_token_mint.supply;
     let lp_to_mint = if lp_supply == 0 {
-        deposit_usd
+        // USD value in 10^8, LP tokens are 10^9 so we mul by 10
+        deposit_usd.checked_mul(10).ok_or(VaultError::MathError)?
     } else {
         deposit_usd
             .checked_mul(lp_supply)

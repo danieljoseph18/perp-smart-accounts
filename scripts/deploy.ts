@@ -50,6 +50,17 @@ async function getUsdcMint(
 }
 
 // -------------------------
+// Check if account exists
+// -------------------------
+async function accountExists(
+  connection: anchor.web3.Connection,
+  pubkey: PublicKey
+): Promise<boolean> {
+  const accountInfo = await connection.getAccountInfo(pubkey);
+  return accountInfo !== null;
+}
+
+// -------------------------
 // Initialize Margin Program
 // -------------------------
 async function initializeMarginProgram(
@@ -70,6 +81,45 @@ async function initializeMarginProgram(
   );
 
   console.log("Margin Vault PDA:", marginVault.toString());
+
+  // Check if the margin vault account already exists
+  const vaultExists = await accountExists(provider.connection, marginVault);
+  if (vaultExists) {
+    console.log("✓ Margin vault already exists, skipping initialization");
+
+    // We still need the token accounts for the return value
+    const solVaultAccount = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      admin,
+      solMint,
+      marginVault,
+      true
+    );
+    const usdcVaultAccount = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      admin,
+      usdcMint,
+      marginVault,
+      true
+    );
+
+    console.log(
+      "Margin Program SOL Vault:",
+      solVaultAccount.address.toString()
+    );
+    console.log(
+      "Margin Program USDC Vault:",
+      usdcVaultAccount.address.toString()
+    );
+
+    return {
+      marginVault,
+      marginSolVault: solVaultAccount.address,
+      marginUsdcVault: usdcVaultAccount.address,
+      chainlinkProgram,
+      chainlinkFeed,
+    };
+  }
 
   // Create associated token accounts for the vault (with the PDA as owner)
   console.log("Creating margin program vault token accounts...");
@@ -144,6 +194,47 @@ async function initializePerpAmm(
     program.programId
   );
   console.log("Pool State PDA:", poolState.toString());
+
+  // Check if pool state account already exists
+  const poolExists = await accountExists(provider.connection, poolState);
+  if (poolExists) {
+    console.log("✓ Perp AMM pool already exists, skipping initialization");
+
+    // Still need to get the token accounts and LP mint for the return value
+    const solVaultAccount = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      (provider.wallet as anchor.Wallet).payer,
+      solMint,
+      poolState,
+      true
+    );
+    const usdcVaultAccount = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      (provider.wallet as anchor.Wallet).payer,
+      usdcMint,
+      poolState,
+      true
+    );
+
+    console.log("Pool State SOL Vault:", solVaultAccount.address.toString());
+    console.log("Pool State USDC Vault:", usdcVaultAccount.address.toString());
+
+    // For LP token mint, we need to fetch it from the pool state data
+    try {
+      const poolData = await program.account.poolState.fetch(poolState);
+      console.log("LP Token Mint:", poolData.lpTokenMint.toString());
+
+      return {
+        poolState,
+        solVault: solVaultAccount.address,
+        usdcVault: usdcVaultAccount.address,
+        lpTokenMint: poolData.lpTokenMint,
+      };
+    } catch (error) {
+      console.error("Error fetching pool state data:", error);
+      throw error;
+    }
+  }
 
   // Create associated token accounts for the pool state vaults
   const solVaultAccount = await getOrCreateAssociatedTokenAccount(
