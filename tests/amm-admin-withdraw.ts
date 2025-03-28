@@ -94,6 +94,9 @@ describe("perp-amm (with configuration persistence)", () => {
     user1UsdcAccount = setup.user1UsdcAccount;
     user2UsdcAccount = setup.user2UsdcAccount;
 
+    console.log("Pool State:", poolState.toBase58());
+    console.log("Admin: ", admin.publicKey.toBase58());
+
     configInitialized = true;
   });
 

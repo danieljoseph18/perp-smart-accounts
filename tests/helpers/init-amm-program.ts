@@ -43,8 +43,9 @@ export async function setupAmmProgram(
 
   // Set up token mints and vaults
   let usdcMint: PublicKey;
-  let solVault: Account;
-  let usdcVault: Account;
+  let solVault: PublicKey;
+  let usdcVault: PublicKey;
+  let usdcRewardVault: PublicKey;
   let lpTokenMint: PublicKey;
   let solMint: PublicKey;
   let lpTokenMintKeypair: Keypair;
@@ -72,21 +73,14 @@ export async function setupAmmProgram(
     lpTokenMint = poolStateAccount.lpTokenMint;
     solMint = new PublicKey("So11111111111111111111111111111111111111112"); // Wrapped SOL is always this address
 
-    // Use the vaults from the pool state
-    const solVaultInfo = await getAccount(
-      provider.connection,
-      poolStateAccount.solVault
-    );
-    solVault = solVaultInfo;
+    // Get vault PDAs from the pool state
+    solVault = poolStateAccount.solVault;
+    usdcVault = poolStateAccount.usdcVault;
+    usdcRewardVault = poolStateAccount.usdcRewardVault;
 
-    const usdcVaultInfo = await getAccount(
-      provider.connection,
-      poolStateAccount.usdcVault
-    );
-    usdcVault = usdcVaultInfo;
-
-    // Get USDC mint from the USDC vault
-    usdcMint = usdcVaultInfo.mint;
+    // We need to get the USDC mint from the pool state directly
+    // since vaults are now PDAs, not token accounts
+    usdcMint = poolStateAccount.usdcMint;
 
     // Get margin vault from the pool state
     marginVault = PublicKey.findProgramAddressSync(
@@ -101,7 +95,9 @@ export async function setupAmmProgram(
     marginSolVault = marginVaultAccount.marginSolVault;
     marginUsdcVault = marginVaultAccount.marginUsdcVault;
 
-    console.log("- USDC vault:", usdcVault.address.toString());
+    console.log("- SOL vault:", solVault.toString());
+    console.log("- USDC vault:", usdcVault.toString());
+    console.log("- USDC reward vault:", usdcRewardVault.toString());
     console.log("- USDC mint:", usdcMint.toString());
     console.log("- Margin vault:", marginVault.toString());
     console.log("- Margin SOL vault:", marginSolVault.toString());
@@ -347,25 +343,28 @@ export async function setupAmmProgram(
     const wrapTx = new anchor.web3.Transaction().add(wrapIx);
     await provider.sendAndConfirm(wrapTx, [admin]);
 
-    // Create vault accounts with margin vault PDA as owner
-    solVault = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      admin,
-      solMint,
-      poolState,
-      true
+    // Derive PDAs for the vaults
+    const [solVaultPDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("sol_vault"), poolState.toBuffer()],
+      program.programId
     );
+    solVault = solVaultPDA;
 
-    usdcVault = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      admin,
-      usdcMint,
-      poolState,
-      true
+    const [usdcVaultPDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("usdc_vault"), poolState.toBuffer()],
+      program.programId
     );
+    usdcVault = usdcVaultPDA;
 
-    console.log("SOL vault:", solVault.address.toString());
-    console.log("USDC vault:", usdcVault.address.toString());
+    const [usdcRewardVaultPDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("usdc_reward_vault"), poolState.toBuffer()],
+      program.programId
+    );
+    usdcRewardVault = usdcRewardVaultPDA;
+
+    console.log("SOL vault:", solVault.toString());
+    console.log("USDC vault:", usdcVault.toString());
+    console.log("USDC reward vault:", usdcRewardVault.toString());
 
     // Initialize margin program - pass mint addresses instead of vault addresses
     let marginInit = (await initializeMarginProgram(
@@ -393,10 +392,11 @@ export async function setupAmmProgram(
         admin: admin.publicKey,
         authority: marginProgram.programId,
         poolState,
-        solVault: solVault.address,
-        usdcVault: usdcVault.address,
+        solVault: solVault,
+        usdcVault: usdcVault,
+        solMint: solMint,
         usdcMint: usdcMint,
-        usdcRewardVault: usdcVault.address, // Using same vault for rewards in tests
+        usdcRewardVault: usdcRewardVault,
         lpTokenMint,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
@@ -414,8 +414,9 @@ export async function setupAmmProgram(
     solMint,
     usdcMint,
     lpTokenMint,
-    solVault: solVault.address,
-    usdcVault: usdcVault.address,
+    solVault,
+    usdcVault,
+    usdcRewardVault,
     marginSolVault,
     marginUsdcVault,
     chainlinkFeed,

@@ -9,7 +9,7 @@ use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 pub struct AdminWithdraw<'info> {
     // Allow any account (including a PDA) to be provided here.
     /// CHECK: Validated by its constraint.
-    pub admin: AccountInfo<'info>,
+    pub admin: Signer<'info>,
 
     #[account(
         mut,

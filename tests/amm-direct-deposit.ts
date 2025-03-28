@@ -53,8 +53,9 @@ describe("perp-amm (with configuration persistence)", () => {
 
   // Set up token mints and vaults
   let usdcMint: PublicKey;
-  let solVault: Account;
-  let usdcVault: Account;
+  let solVault: PublicKey;
+  let usdcVault: PublicKey;
+  let usdcRewardVault: PublicKey;
   let lpTokenMint: PublicKey;
   let solMint: PublicKey;
 
@@ -99,27 +100,20 @@ describe("perp-amm (with configuration persistence)", () => {
       lpTokenMint = poolStateAccount.lpTokenMint;
       solMint = new PublicKey("So11111111111111111111111111111111111111112"); // Wrapped SOL is always this address
 
-      // Use the vaults from the pool state
-      const solVaultInfo = await getAccount(
-        provider.connection,
-        poolStateAccount.solVault
-      );
-      solVault = solVaultInfo;
+      // Get vault PDAs from the pool state
+      solVault = poolStateAccount.solVault;
+      usdcVault = poolStateAccount.usdcVault;
+      usdcRewardVault = poolStateAccount.usdcRewardVault;
 
-      const usdcVaultInfo = await getAccount(
-        provider.connection,
-        poolStateAccount.usdcVault
-      );
-      usdcVault = usdcVaultInfo;
-
-      // Get USDC mint from the USDC vault
-      usdcMint = usdcVaultInfo.mint;
+      // Get USDC mint from pool state
+      usdcMint = poolStateAccount.usdcMint;
 
       console.log("Using existing configuration:");
       console.log("- Chainlink feed:", chainlinkFeed.toString());
       console.log("- LP Token mint:", lpTokenMint.toString());
-      console.log("- SOL vault:", solVault.address.toString());
-      console.log("- USDC vault:", usdcVault.address.toString());
+      console.log("- SOL vault:", solVault.toString());
+      console.log("- USDC vault:", usdcVault.toString());
+      console.log("- USDC reward vault:", usdcRewardVault.toString());
       console.log("- USDC mint:", usdcMint.toString());
 
       // Create or get token accounts for testing
@@ -374,25 +368,28 @@ describe("perp-amm (with configuration persistence)", () => {
       marginProgram.programId
     );
 
-    // Create vault accounts with margin vault PDA as owner
-    solVault = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      admin,
-      solMint,
-      marginVault,
-      true
+    // Derive PDAs for the vaults
+    const [solVaultPDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("sol_vault"), poolState.toBuffer()],
+      program.programId
     );
+    solVault = solVaultPDA;
 
-    usdcVault = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      admin,
-      usdcMint,
-      marginVault,
-      true
+    const [usdcVaultPDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("usdc_vault"), poolState.toBuffer()],
+      program.programId
     );
+    usdcVault = usdcVaultPDA;
 
-    console.log("SOL vault:", solVault.address.toString());
-    console.log("USDC vault:", usdcVault.address.toString());
+    const [usdcRewardVaultPDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("usdc_reward_vault"), poolState.toBuffer()],
+      program.programId
+    );
+    usdcRewardVault = usdcRewardVaultPDA;
+
+    console.log("SOL vault:", solVault.toString());
+    console.log("USDC vault:", usdcVault.toString());
+    console.log("USDC reward vault:", usdcRewardVault.toString());
 
     // Initialize margin program
     await initializeMarginProgram(
@@ -416,10 +413,10 @@ describe("perp-amm (with configuration persistence)", () => {
         admin: admin.publicKey,
         authority: marginProgram.programId,
         poolState,
-        solVault: solVault.address,
-        usdcVault: usdcVault.address,
+        solVault: solVault,
+        usdcVault: usdcVault,
         usdcMint: usdcMint,
-        usdcRewardVault: usdcVault.address, // Using same vault for simplicity
+        usdcRewardVault: usdcRewardVault,
         lpTokenMint,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
@@ -454,11 +451,10 @@ describe("perp-amm (with configuration persistence)", () => {
         admin
       );
 
-      // Get SOL vault balance before deposit
-      const solVaultBefore = await getAccount(
-        provider.connection,
-        poolStateAccount.solVault
-      );
+      // Get pool state before deposit
+      const poolStateBefore = await program.account.poolState.fetch(poolState);
+      const solDepositedBefore = poolStateBefore.solDeposited;
+      
       // Check admin's WSOL balance before deposit
       const adminSolBefore = await getAccount(
         provider.connection,
@@ -486,24 +482,23 @@ describe("perp-amm (with configuration persistence)", () => {
         .signers([admin])
         .rpc();
 
-      // Get vault balance after admin deposit for verification
-      const solVaultAfter = await getAccount(
-        provider.connection,
-        poolStateAccount.solVault
-      );
+      // Get pool state after admin deposit for verification
+      const poolStateAfter = await program.account.poolState.fetch(poolState);
+      const solDepositedAfter = poolStateAfter.solDeposited;
+      
       // Check admin's WSOL balance after deposit
       const adminSolAfter = await getAccount(
         provider.connection,
         adminSolAccount
       );
 
-      // Verify that the vault balance increased by the deposit amount.
+      // Verify that the SOL deposited increased by the deposit amount.
       assert.equal(
-        new BN(solVaultAfter.amount.toString())
-          .sub(new BN(solVaultBefore.amount.toString()))
+        new BN(solDepositedAfter.toString())
+          .sub(new BN(solDepositedBefore.toString()))
           .toString(),
         depositAmount.toString(),
-        "SOL vault balance should increase by deposit amount"
+        "SOL deposited in pool state should increase by deposit amount"
       );
 
       // Verify that the admin's WSOL balance decreased by the deposit amount
@@ -521,10 +516,9 @@ describe("perp-amm (with configuration persistence)", () => {
       const poolStateAccount = await program.account.poolState.fetch(poolState);
 
       // Get balances before admin deposit
-      const usdcVaultBefore = await getAccount(
-        provider.connection,
-        poolStateAccount.usdcVault
-      );
+      const poolStateBefore = await program.account.poolState.fetch(poolState);
+      const usdcDepositedBefore = poolStateBefore.usdcDeposited;
+      
       const adminUsdcBefore = await getAccount(
         provider.connection,
         adminUsdcAccount
@@ -535,8 +529,8 @@ describe("perp-amm (with configuration persistence)", () => {
         adminUsdcBefore.amount.toString()
       );
       console.log(
-        "USDC vault before deposit:",
-        usdcVaultBefore.amount.toString()
+        "USDC deposited before deposit:",
+        usdcDepositedBefore.toString()
       );
 
       const depositAmount = new BN(100_000_000); // 100 USDC
@@ -558,11 +552,8 @@ describe("perp-amm (with configuration persistence)", () => {
         .rpc();
 
       // Get balances after admin deposit
-      const usdcVaultAfter = await getAccount(
-        provider.connection,
-        poolStateAccount.usdcVault
-      );
       const poolStateAfter = await program.account.poolState.fetch(poolState);
+      const usdcDepositedAfter = poolStateAfter.usdcDeposited;
       const adminUsdcAfter = await getAccount(
         provider.connection,
         adminUsdcAccount
@@ -570,11 +561,11 @@ describe("perp-amm (with configuration persistence)", () => {
 
       // Verify state changes
       assert.equal(
-        new BN(usdcVaultAfter.amount.toString())
-          .sub(new BN(usdcVaultBefore.amount.toString()))
+        new BN(usdcDepositedAfter.toString())
+          .sub(new BN(usdcDepositedBefore.toString()))
           .toString(),
         depositAmount.toString(),
-        "USDC vault balance should increase by deposit amount"
+        "USDC deposited in pool state should increase by deposit amount"
       );
 
       assert.equal(
@@ -586,8 +577,8 @@ describe("perp-amm (with configuration persistence)", () => {
       );
 
       assert.equal(
-        poolStateAfter.usdcDeposited.toString(),
-        poolStateAccount.usdcDeposited.add(depositAmount).toString(),
+        usdcDepositedAfter.toString(),
+        usdcDepositedBefore.add(depositAmount).toString(),
         "Pool USDC deposited should increase by deposit amount"
       );
     });

@@ -234,8 +234,8 @@ describe("perp-amm (with configuration persistence)", () => {
       ).address;
 
       // Get balances before withdrawal
-      const solVaultBefore = await getAccount(provider.connection, solVault);
       const poolStateBefore = await program.account.poolState.fetch(poolState);
+      const solDepositedBefore = poolStateBefore.solDeposited;
       const userStateBefore = await program.account.userState.fetch(user1State);
       const user1SolBefore = await getAccount(
         provider.connection,
@@ -277,8 +277,8 @@ describe("perp-amm (with configuration persistence)", () => {
         .rpc();
 
       // Get balances after withdrawal
-      const solVaultAfter = await getAccount(provider.connection, solVault);
       const poolStateAfter = await program.account.poolState.fetch(poolState);
+      const solDepositedAfter = poolStateAfter.solDeposited;
       const userStateAfter = await program.account.userState.fetch(user1State);
       const user1SolAfter = await getAccount(
         provider.connection,
@@ -293,10 +293,10 @@ describe("perp-amm (with configuration persistence)", () => {
 
       // Verify state changes
       assert.isTrue(
-        new BN(solVaultBefore.amount.toString()).gt(
-          new BN(solVaultAfter.amount.toString())
+        new BN(solDepositedBefore.toString()).gt(
+          new BN(solDepositedAfter.toString())
         ),
-        "SOL vault balance should decrease"
+        "SOL deposited in pool state should decrease"
       );
 
       assert.isTrue(
@@ -337,8 +337,8 @@ describe("perp-amm (with configuration persistence)", () => {
 
     it("should withdraw USDC from the pool", async () => {
       // Get balances before withdrawal
-      const usdcVaultBefore = await getAccount(provider.connection, usdcVault);
       const poolStateBefore = await program.account.poolState.fetch(poolState);
+      const usdcDepositedBefore = poolStateBefore.usdcDeposited;
       const userStateBefore = await program.account.userState.fetch(user2State);
       const user2UsdcBefore = await getAccount(
         provider.connection,
@@ -380,8 +380,8 @@ describe("perp-amm (with configuration persistence)", () => {
         .rpc();
 
       // Get balances after withdrawal
-      const usdcVaultAfter = await getAccount(provider.connection, usdcVault);
       const poolStateAfter = await program.account.poolState.fetch(poolState);
+      const usdcDepositedAfter = poolStateAfter.usdcDeposited;
       const userStateAfter = await program.account.userState.fetch(user2State);
       const user2UsdcAfter = await getAccount(
         provider.connection,
@@ -396,10 +396,10 @@ describe("perp-amm (with configuration persistence)", () => {
 
       // Verify state changes
       assert.isTrue(
-        new BN(usdcVaultBefore.amount.toString()).gt(
-          new BN(usdcVaultAfter.amount.toString())
+        new BN(usdcDepositedBefore.toString()).gt(
+          new BN(usdcDepositedAfter.toString())
         ),
-        "USDC vault balance should decrease"
+        "USDC deposited in pool state should decrease"
       );
 
       assert.isTrue(

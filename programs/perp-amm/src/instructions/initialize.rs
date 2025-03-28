@@ -21,22 +21,43 @@ pub struct Initialize<'info> {
     )]
     pub pool_state: Account<'info, PoolState>,
 
-    /// SOL vault account (if using wrapped SOL, this would be a token account)
-    /// Here, assume you've already created the vault outside or are about to
-    #[account(mut)]
+    #[account(
+        init,
+        payer = admin,
+        seeds = [b"sol_vault".as_ref(), pool_state.key().as_ref()],
+        bump,
+        token::mint = sol_mint, // <-- CORRECT: Refers to the sol_mint field above
+        token::authority = pool_state,
+    )]
     pub sol_vault: Account<'info, TokenAccount>,
 
-    /// USDC vault account
-    #[account(mut)]
+    /// USDC vault PDA - owned by pool_state
+    #[account(
+        init,
+        payer = admin,
+        seeds = [b"usdc_vault".as_ref(), pool_state.key().as_ref()],
+        bump,
+        token::mint = usdc_mint, 
+        token::authority = pool_state,
+    )]
     pub usdc_vault: Account<'info, TokenAccount>,
 
-    #[account(mut)]
-    /// CHECK: This is not dangerous if you're verifying usage in your logic
-    pub usdc_mint: AccountInfo<'info>,
-
-    /// Reward vault for USDC
-    #[account(mut)]
+    /// Reward vault PDA for USDC - owned by pool_state
+    #[account(
+        init,
+        payer = admin,
+        seeds = [b"usdc_reward_vault".as_ref(), pool_state.key().as_ref()],
+        bump,
+        token::mint = usdc_mint, 
+        token::authority = pool_state,
+    )]
     pub usdc_reward_vault: Account<'info, TokenAccount>,
+
+    #[account(mut)]
+    pub sol_mint: Account<'info, Mint>,
+
+    #[account(mut)]
+    pub usdc_mint: Account<'info, Mint>,
 
     /// LP token mint
     #[account(

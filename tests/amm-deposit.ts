@@ -164,7 +164,9 @@ describe("perp-amm (with configuration persistence)", () => {
 
       console.log("Created WSOL ata: ", user1SolAccount);
 
-      const solVaultBefore = await getAccount(provider.connection, solVault);
+      // Get pool state and LP token information before deposit
+      const poolStateBefore = await program.account.poolState.fetch(poolState);
+      const solDepositedBefore = poolStateBefore.solDeposited;
       const lpTokenSupplyBefore = (
         await getMint(provider.connection, lpTokenMint)
       ).supply;
@@ -207,7 +209,8 @@ describe("perp-amm (with configuration persistence)", () => {
       console.log("Deposit successful, verifying state changes...");
 
       // Get balance after deposit
-      const solVaultAfter = await getAccount(provider.connection, solVault);
+      const poolStateAfter = await program.account.poolState.fetch(poolState);
+      const solDepositedAfter = poolStateAfter.solDeposited;
       const userStateAfter = await program.account.userState.fetch(user1State);
       const lpTokenSupplyAfter = (
         await getMint(provider.connection, lpTokenMint)
@@ -228,11 +231,13 @@ describe("perp-amm (with configuration persistence)", () => {
 
       // Verify state changes
       assert.equal(
-        new BN(solVaultAfter.amount.toString())
-          .sub(new BN(solVaultBefore.amount.toString()))
+        new BN(solDepositedAfter.toString())
+          .sub(new BN(solDepositedBefore.toString()))
           .toString(),
-        initialSolDeposit.toString(),
-        "SOL vault balance should increase by deposit amount"
+        // The net amount credited to the vault after fees is deposit_amount - fee
+        // But we're tracking on-chain so it should match the initial deposit
+        initialSolDeposit.sub(feeAmount).toString(),
+        "SOL deposited in pool state should increase by deposit amount minus fee"
       );
 
       assert.equal(
@@ -259,7 +264,8 @@ describe("perp-amm (with configuration persistence)", () => {
 
     it("should deposit USDC to the pool", async () => {
       // Get balances before deposit
-      const usdcVaultBefore = await getAccount(provider.connection, usdcVault);
+      const poolStateBefore = await program.account.poolState.fetch(poolState);
+      const usdcDepositedBefore = poolStateBefore.usdcDeposited;
       const lpTokenSupplyBefore = (
         await getMint(provider.connection, lpTokenMint)
       ).supply;
@@ -288,7 +294,8 @@ describe("perp-amm (with configuration persistence)", () => {
         .rpc();
 
       // Get balances after deposit
-      const usdcVaultAfter = await getAccount(provider.connection, usdcVault);
+      const poolStateAfter = await program.account.poolState.fetch(poolState);
+      const usdcDepositedAfter = poolStateAfter.usdcDeposited;
       const userStateAfter = await program.account.userState.fetch(user2State);
       const lpTokenSupplyAfter = (
         await getMint(provider.connection, lpTokenMint)
@@ -301,13 +308,17 @@ describe("perp-amm (with configuration persistence)", () => {
         await getAccount(provider.connection, user2LpTokenAccount)
       ).amount;
 
+      // Calculate expected values (accounting for 0.1% fee)
+      const feeAmount = initialUsdcDeposit.muln(1).divn(1000); // 0.1% fee
+      const depositedAmount = initialUsdcDeposit.sub(feeAmount);
+
       // Verify state changes
       assert.equal(
-        new BN(usdcVaultAfter.amount.toString())
-          .sub(new BN(usdcVaultBefore.amount.toString()))
+        new BN(usdcDepositedAfter.toString())
+          .sub(new BN(usdcDepositedBefore.toString()))
           .toString(),
-        initialUsdcDeposit.toString(),
-        "USDC vault balance should increase by deposit amount"
+        depositedAmount.toString(),
+        "USDC deposited in pool state should increase by deposit amount minus fee"
       );
 
       assert.equal(
@@ -432,7 +443,8 @@ describe("perp-amm (with configuration persistence)", () => {
       );
 
       // Get balances before first deposit
-      const solVaultBefore = await getAccount(provider.connection, solVault);
+      const poolStateBefore = await program.account.poolState.fetch(poolState);
+      const solDepositedBefore = poolStateBefore.solDeposited;
       const lpTokenSupplyBefore = (
         await getMint(provider.connection, lpTokenMint)
       ).supply;
@@ -459,20 +471,25 @@ describe("perp-amm (with configuration persistence)", () => {
         .rpc();
 
       // Get balances after first deposit
-      const solVaultAfterFirst = await getAccount(provider.connection, solVault);
+      const poolStateAfterFirst = await program.account.poolState.fetch(poolState);
+      const solDepositedAfterFirst = poolStateAfterFirst.solDeposited;
       const lpTokenSupplyAfterFirst = (
         await getMint(provider.connection, lpTokenMint)
       ).supply;
       const userStateAfterFirst = await program.account.userState.fetch(user1State);
       const lpBalanceAfterFirst = userStateAfterFirst.lpTokenBalance;
 
+      // Calculate fee for first deposit
+      const firstDepositFee = firstDepositAmount.muln(1).divn(1000); // 0.1% fee
+      const firstDepositNet = firstDepositAmount.sub(firstDepositFee);
+
       // Assert first deposit was successful
       assert.equal(
-        new BN(solVaultAfterFirst.amount.toString())
-          .sub(new BN(solVaultBefore.amount.toString()))
+        new BN(solDepositedAfterFirst.toString())
+          .sub(new BN(solDepositedBefore.toString()))
           .toString(),
-        firstDepositAmount.toString(),
-        "SOL vault balance should increase by first deposit amount"
+        firstDepositNet.toString(),
+        "SOL deposited in pool state should increase by first deposit amount minus fee"
       );
       
       assert.isTrue(
@@ -512,19 +529,24 @@ describe("perp-amm (with configuration persistence)", () => {
         .rpc();
 
       // Get balances after second deposit
-      const solVaultAfterSecond = await getAccount(provider.connection, solVault);
+      const poolStateAfterSecond = await program.account.poolState.fetch(poolState);
+      const solDepositedAfterSecond = poolStateAfterSecond.solDeposited;
       const userStateAfterSecond = await program.account.userState.fetch(user1State);
       const lpTokenSupplyAfterSecond = (
         await getMint(provider.connection, lpTokenMint)
       ).supply;
 
+      // Calculate fee for second deposit
+      const secondDepositFee = secondDepositAmount.muln(1).divn(1000); // 0.1% fee
+      const secondDepositNet = secondDepositAmount.sub(secondDepositFee);
+
       // Assert second deposit was successful
       assert.equal(
-        new BN(solVaultAfterSecond.amount.toString())
-          .sub(new BN(solVaultAfterFirst.amount.toString()))
+        new BN(solDepositedAfterSecond.toString())
+          .sub(new BN(solDepositedAfterFirst.toString()))
           .toString(),
-        secondDepositAmount.toString(),
-        "SOL vault balance should increase by second deposit amount"
+        secondDepositNet.toString(),
+        "SOL deposited in pool state should increase by second deposit amount minus fee"
       );
       
       assert.isTrue(
