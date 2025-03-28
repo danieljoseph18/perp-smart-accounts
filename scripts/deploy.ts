@@ -236,24 +236,27 @@ async function initializePerpAmm(
     }
   }
 
-  // Create associated token accounts for the pool state vaults
-  const solVaultAccount = await getOrCreateAssociatedTokenAccount(
-    provider.connection,
-    (provider.wallet as anchor.Wallet).payer,
-    solMint,
-    poolState,
-    true
+  // Derive PDAs for the vaults
+  const [solVaultPDA] = PublicKey.findProgramAddressSync(
+    [Buffer.from("sol_vault"), poolState.toBuffer()],
+    program.programId
   );
-  const usdcVaultAccount = await getOrCreateAssociatedTokenAccount(
-    provider.connection,
-    (provider.wallet as anchor.Wallet).payer,
-    usdcMint,
-    poolState,
-    true
-  );
+  const solVault = solVaultPDA;
 
-  console.log("Pool State SOL Vault:", solVaultAccount.address.toString());
-  console.log("Pool State USDC Vault:", usdcVaultAccount.address.toString());
+  const [usdcVaultPDA] = PublicKey.findProgramAddressSync(
+    [Buffer.from("usdc_vault"), poolState.toBuffer()],
+    program.programId
+  );
+  const usdcVault = usdcVaultPDA;
+
+  const [usdcRewardVaultPDA] = PublicKey.findProgramAddressSync(
+    [Buffer.from("usdc_reward_vault"), poolState.toBuffer()],
+    program.programId
+  );
+  const usdcRewardVault = usdcRewardVaultPDA;
+
+  console.log("Pool State SOL Vault:", solVault.toString());
+  console.log("Pool State USDC Vault:", usdcVault.toString());
 
   // Create an LP token mint for the AMM liquidity provider tokens.
   const lpTokenMintKeypair = Keypair.generate();
@@ -274,10 +277,11 @@ async function initializePerpAmm(
         admin: provider.wallet.publicKey,
         authority: marginProgramId,
         poolState,
-        solVault: solVaultAccount.address,
-        usdcVault: usdcVaultAccount.address,
-        usdcMint: usdcMint,
-        usdcRewardVault: usdcVaultAccount.address, // FIXME: Replace with a USDC Reward Vault
+        solVault,
+        usdcVault,
+        solMint,
+        usdcMint,
+        usdcRewardVault,
         lpTokenMint: lpTokenMintKeypair.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
@@ -290,8 +294,8 @@ async function initializePerpAmm(
 
     return {
       poolState,
-      solVault: solVaultAccount.address,
-      usdcVault: usdcVaultAccount.address,
+      solVault,
+      usdcVault,
       lpTokenMint: lpTokenMintKeypair.publicKey,
     };
   } catch (error) {
