@@ -15,7 +15,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = admin,
-        space = 8 + PoolState::LEN,
+        space = 8 + PoolState::MAX_LEN,
         seeds = [b"pool_state".as_ref()],
         bump
     )]
@@ -80,7 +80,11 @@ pub fn handler(ctx: Context<Initialize>) -> Result<()> {
     let pool_state = &mut ctx.accounts.pool_state;
 
     pool_state.admin = ctx.accounts.admin.key();
-    pool_state.authority = ctx.accounts.authority.key();
+    
+    // Initialize authorities with the provided authority
+    let mut authorities = Vec::new();
+    authorities.push(ctx.accounts.authority.key());
+    pool_state.authorities = authorities;
     pool_state.sol_vault = ctx.accounts.sol_vault.key();
     pool_state.usdc_vault = ctx.accounts.usdc_vault.key();
     pool_state.usdc_mint = ctx.accounts.usdc_mint.key();

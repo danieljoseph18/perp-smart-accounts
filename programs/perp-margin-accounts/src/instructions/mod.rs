@@ -5,6 +5,8 @@ pub mod execute_withdraw;
 pub mod initialize;
 pub mod liquidate;
 pub mod request_withdraw;
+pub mod add_authority;
+pub mod remove_authority;
 
 pub use cancel_withdraw::*;
 pub use claim_fees::*;
@@ -13,3 +15,5 @@ pub use execute_withdraw::*;
 pub use initialize::*;
 pub use liquidate::*;
 pub use request_withdraw::*;
+pub use add_authority::*;
+pub use remove_authority::*;

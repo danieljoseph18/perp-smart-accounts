@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 #[error_code]
-pub enum MarginError {
+pub enum ErrorCode {
     #[msg("Insufficient margin balance for withdrawal")]
     InsufficientMargin,
 
@@ -49,4 +49,22 @@ pub enum MarginError {
 
     #[msg("Zero deposit amount")]
     ZeroDepositAmount,
+    
+    #[msg("Unauthorized operation")]
+    Unauthorized,
+    
+    #[msg("Authority already exists")]
+    AuthorityAlreadyExists,
+    
+    #[msg("Maximum number of authorities reached")]
+    MaxAuthoritiesReached,
+    
+    #[msg("Cannot remove the last authority")]
+    CannotRemoveLastAuthority,
+    
+    #[msg("Authority not found")]
+    AuthorityNotFound,
 }
+
+// For backward compatibility with existing code
+pub type MarginError = ErrorCode;

@@ -52,7 +52,11 @@ pub struct AdminWithdraw<'info> {
 pub fn handler(ctx: Context<AdminWithdraw>, amount: u64) -> Result<()> {
     // Manual check: Ensure that either the admin or authority role is calling.
     if ctx.accounts.admin.key() != ctx.accounts.pool_state.admin
-        && ctx.accounts.admin.key() != ctx.accounts.pool_state.authority
+        && !ctx
+            .accounts
+            .pool_state
+            .authorities
+            .contains(&ctx.accounts.admin.key())
     {
         return err!(VaultError::Unauthorized);
     }

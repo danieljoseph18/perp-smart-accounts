@@ -19,14 +19,17 @@ pub struct MarginAccount {
     pub bump: u8,
 }
 
+// Maximum number of authorities allowed
+pub const MAX_AUTHORITIES: usize = 10;
+
 #[account]
 pub struct MarginVault {
     /// The token account holding SOL margin deposits
     pub margin_sol_vault: Pubkey,
     /// The token account holding USDC margin deposits
     pub margin_usdc_vault: Pubkey,
-    /// Authority that can update PnL
-    pub authority: Pubkey,
+    /// Authorities that can perform admin operations
+    pub authorities: Vec<Pubkey>,
     /// Minimum time required between withdrawal request and execution (in seconds)
     pub withdrawal_timelock: i64,
     /// Bump seed for PDA derivation
@@ -53,14 +56,26 @@ impl MarginAccount {
 }
 
 impl MarginVault {
-    pub const LEN: usize = 8 + // discriminator
+    // Base size not including variable length authorities
+    pub const BASE_LEN: usize = 8 + // discriminator
         32 + // sol_vault
         32 + // usdc_vault
-        32 + // authority
         8 + // withdrawal_timelock
         1 + // bump
         8 + // sol_fees_accumulated
         8 + // usdc_fees_accumulated
         32 + // chainlink_program
         32; // chainlink_feed
+        
+    // Maximum size with max authorities allocation
+    pub const MAX_LEN: usize = Self::BASE_LEN + 
+        4 + // vec discriminator
+        (32 * MAX_AUTHORITIES); // pubkeys in authorities vec
+}
+
+impl MarginVault {
+    /// Check if a public key is an authorized authority
+    pub fn is_authority(&self, key: &Pubkey) -> bool {
+        self.authorities.iter().any(|auth| auth == key)
+    }
 }

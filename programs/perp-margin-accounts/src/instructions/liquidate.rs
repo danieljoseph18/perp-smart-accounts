@@ -16,7 +16,7 @@ pub struct LiquidateMarginAccount<'info> {
     #[account(
         seeds = [b"margin_vault"],
         bump = margin_vault.bump,
-        has_one = authority @ MarginError::InvalidAuthority
+        constraint = margin_vault.authorities.contains(&authority.key()) @ MarginError::InvalidAuthority
     )]
     pub margin_vault: Account<'info, MarginVault>,
 
@@ -46,7 +46,7 @@ pub struct LiquidateMarginAccount<'info> {
     pub chainlink_feed: AccountInfo<'info>,
 
     #[account(
-        constraint = authority.key() == margin_vault.authority @ MarginError::UnauthorizedLiquidation
+        constraint = margin_vault.authorities.contains(&authority.key()) @ MarginError::UnauthorizedLiquidation
     )]
     pub authority: Signer<'info>,
     pub token_program: Program<'info, Token>,

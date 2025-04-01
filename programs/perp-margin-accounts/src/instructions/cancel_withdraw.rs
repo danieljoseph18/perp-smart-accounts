@@ -19,7 +19,7 @@ pub struct CancelWithdrawal<'info> {
     pub margin_vault: Account<'info, MarginVault>,
 
     #[account(
-        constraint = authority.key() == margin_account.owner || authority.key() == margin_vault.authority @ MarginError::UnauthorizedExecution
+        constraint = authority.key() == margin_account.owner || margin_vault.authorities.contains(&authority.key()) @ MarginError::UnauthorizedExecution
     )]
     pub authority: Signer<'info>,
 }

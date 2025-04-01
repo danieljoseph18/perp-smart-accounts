@@ -9,6 +9,8 @@ pub mod force_close_user_state;
 pub mod initialize;
 pub mod start_rewards;
 pub mod withdraw;
+pub mod add_authority;
+pub mod remove_authority;
 
 pub use admin_withdraw::*;
 pub use claim_fees::*;
@@ -21,3 +23,5 @@ pub use force_close_user_state::*;
 pub use initialize::*;
 pub use start_rewards::*;
 pub use withdraw::*;
+pub use add_authority::*;
+pub use remove_authority::*;

@@ -68,4 +68,12 @@ pub mod perp_margin_accounts {
     pub fn claim_fees(ctx: Context<ClaimFees>) -> Result<()> {
         instructions::claim_fees::handler(ctx)
     }
+    
+    pub fn add_authority(ctx: Context<AddAuthority>, new_authority: Pubkey) -> Result<()> {
+        instructions::add_authority::handler(ctx, new_authority)
+    }
+    
+    pub fn remove_authority(ctx: Context<RemoveAuthority>, authority_to_remove: Pubkey) -> Result<()> {
+        instructions::remove_authority::handler(ctx, authority_to_remove)
+    }
 }

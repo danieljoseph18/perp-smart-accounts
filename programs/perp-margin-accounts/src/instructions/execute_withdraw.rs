@@ -20,7 +20,7 @@ pub struct ExecuteWithdrawal<'info> {
     #[account(
         seeds = [b"margin_vault"],
         bump = margin_vault.bump,
-        constraint = authority.key() == margin_vault.authority @ MarginError::InvalidAuthority
+        constraint = margin_vault.authorities.contains(&authority.key()) @ MarginError::InvalidAuthority
     )]
     pub margin_vault: Account<'info, MarginVault>,
 
@@ -68,7 +68,7 @@ pub struct ExecuteWithdrawal<'info> {
     pub chainlink_feed: AccountInfo<'info>,
 
     #[account(
-        constraint = authority.key() == margin_vault.authority @ MarginError::UnauthorizedExecution
+        constraint = margin_vault.authorities.contains(&authority.key()) @ MarginError::UnauthorizedExecution
     )]
     pub authority: Signer<'info>,
 

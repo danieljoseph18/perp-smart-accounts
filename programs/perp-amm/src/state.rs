@@ -20,14 +20,17 @@ pub struct UpdateSolUsdPrice<'info> {
 // Data structures for the pool
 // -----------------------------------------------
 
+// Maximum number of authorities allowed
+pub const MAX_AUTHORITIES: usize = 10;
+
 /// PoolState holds global info about the liquidity pool.
 #[account]
 pub struct PoolState {
     /// Admin authority who can withdraw funds and set rewards
     pub admin: Pubkey,
-
-    /// Additional authority that can call admin_deposit and admin_withdraw (e.g. margin program)
-    pub authority: Pubkey,
+    
+    /// Authorities that can perform admin operations (e.g. margin program)
+    pub authorities: Vec<Pubkey>,
 
     /// SOL vault account (token account for wrapped SOL or special handling)
     pub sol_vault: Pubkey,
@@ -88,9 +91,8 @@ pub struct PoolState {
 }
 
 impl PoolState {
-    /// Adjust this if you add or remove fields
-    pub const LEN: usize = 32  // admin
-        + 32                  // authority
+    // Base size not including variable length authorities
+    pub const BASE_LEN: usize = 32  // admin
         + 32                  // sol_vault
         + 32                  // usdc_vault
         + 32                  // usdc_mint
@@ -107,7 +109,22 @@ impl PoolState {
         + 16                  // cumulative_reward_per_token
         + 8                   // last_distribution_time
         + 8                   // accumulated_sol_fees
-        + 8; // accumulated_usdc_fees
+        + 8;                  // accumulated_usdc_fees
+        
+    // Maximum size with max authorities allocation
+    pub const MAX_LEN: usize = Self::BASE_LEN + 
+        4 + // vec discriminator
+        (32 * MAX_AUTHORITIES); // pubkeys in authorities vec
+        
+    /// Check if a public key is an authorized authority
+    pub fn is_authority(&self, key: &Pubkey) -> bool {
+        self.authorities.iter().any(|auth| auth == key)
+    }
+    
+    /// Check if a public key is the admin
+    pub fn is_admin(&self, key: &Pubkey) -> bool {
+        self.admin == *key
+    }
 }
 
 /// UserState stores user-specific info (in practice often combined into a single PDA).

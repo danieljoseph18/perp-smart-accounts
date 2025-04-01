@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 #[error_code]
-pub enum VaultError {
+pub enum ErrorCode {
     #[msg("User has insufficient LP token balance.")]
     InsufficientLpBalance,
     #[msg("Only admin can call this function.")]
@@ -32,4 +32,15 @@ pub enum VaultError {
     PreviousPeriodNotEnded,
     #[msg("Invalid reward vault provided.")]
     InvalidRewardVault,
+    #[msg("Authority already exists")]
+    AuthorityAlreadyExists,
+    #[msg("Maximum number of authorities reached")]
+    MaxAuthoritiesReached,
+    #[msg("Cannot remove the last authority")]
+    CannotRemoveLastAuthority,
+    #[msg("Authority not found")]
+    AuthorityNotFound,
 }
+
+// For backward compatibility with existing code
+pub type VaultError = ErrorCode;

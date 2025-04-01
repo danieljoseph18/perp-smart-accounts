@@ -7,7 +7,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = authority,
-        space = MarginVault::LEN,
+        space = MarginVault::MAX_LEN,
         seeds = [b"margin_vault"],
         bump
     )]
@@ -41,7 +41,11 @@ pub fn handler(
 
     margin_vault.margin_sol_vault = ctx.accounts.margin_sol_vault.key();
     margin_vault.margin_usdc_vault = ctx.accounts.margin_usdc_vault.key();
-    margin_vault.authority = ctx.accounts.authority.key();
+    
+    // Initialize authorities with the signer as the first authority
+    let mut authorities = Vec::new();
+    authorities.push(ctx.accounts.authority.key());
+    margin_vault.authorities = authorities;
     margin_vault.withdrawal_timelock = withdrawal_timelock;
     margin_vault.bump = ctx.bumps.margin_vault;
     margin_vault.chainlink_program = chainlink_program;

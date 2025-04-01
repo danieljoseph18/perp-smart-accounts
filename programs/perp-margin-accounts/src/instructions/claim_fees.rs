@@ -9,7 +9,7 @@ pub struct ClaimFees<'info> {
         mut,
         seeds = [b"margin_vault"],
         bump = margin_vault.bump,
-        constraint = authority.key() == margin_vault.authority @ MarginError::UnauthorizedExecution,
+        constraint = margin_vault.authorities.contains(&authority.key()) @ MarginError::UnauthorizedExecution,
     )]
     pub margin_vault: Account<'info, MarginVault>,
 
