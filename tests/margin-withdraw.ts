@@ -309,7 +309,7 @@ describe("perp-margin-accounts", () => {
 
       // Request withdrawal
       await marginProgram.methods
-        .requestWithdrawal(solWithdrawAmount, new BN(0)) // Only SOL withdrawal
+        .requestWithdrawal(solWithdrawAmount, true) // Only SOL withdrawal
         .accountsStrict({
           marginAccount: user1MarginAccount,
           marginVault: marginVault,
@@ -370,7 +370,7 @@ describe("perp-margin-accounts", () => {
 
       // Request withdrawal
       await marginProgram.methods
-        .requestWithdrawal(new BN(0), usdcWithdrawAmount) // Only USDC withdrawal
+        .requestWithdrawal(usdcWithdrawAmount, false) // Only USDC withdrawal
         .accountsStrict({
           marginAccount: user2MarginAccount,
           marginVault: marginVault,
@@ -470,7 +470,7 @@ describe("perp-margin-accounts", () => {
 
       // First, request a withdrawal
       await marginProgram.methods
-        .requestWithdrawal(solWithdrawAmount, new BN(0))
+        .requestWithdrawal(solWithdrawAmount, true)
         .accountsStrict({
           marginAccount: user1MarginAccount,
           marginVault: marginVault,
@@ -483,7 +483,7 @@ describe("perp-margin-accounts", () => {
       try {
         // Attempt to request another withdrawal while one is pending
         await marginProgram.methods
-          .requestWithdrawal(new BN(LAMPORTS_PER_SOL / 2), new BN(0))
+          .requestWithdrawal(new BN(LAMPORTS_PER_SOL / 2), true)
           .accountsStrict({
             marginAccount: user1MarginAccount,
             marginVault: marginVault,
@@ -574,7 +574,7 @@ describe("perp-margin-accounts", () => {
 
       // First, request a withdrawal
       await marginProgram.methods
-        .requestWithdrawal(solWithdrawAmount, new BN(0))
+        .requestWithdrawal(solWithdrawAmount, true)
         .accountsStrict({
           marginAccount: user1MarginAccount,
           marginVault: marginVault,
@@ -624,7 +624,7 @@ describe("perp-margin-accounts", () => {
 
       // Now try to request another withdrawal
       await marginProgram.methods
-        .requestWithdrawal(solWithdrawAmount, new BN(0))
+        .requestWithdrawal(solWithdrawAmount, true)
         .accountsStrict({
           marginAccount: user1MarginAccount,
           marginVault: marginVault,
@@ -802,7 +802,7 @@ describe("perp-margin-accounts", () => {
 
       // First, request a withdrawal
       await marginProgram.methods
-        .requestWithdrawal(solWithdrawAmount, new BN(0))
+        .requestWithdrawal(solWithdrawAmount, true)
         .accountsStrict({
           marginAccount: user1MarginAccount,
           marginVault: marginVault,
@@ -940,7 +940,7 @@ describe("perp-margin-accounts", () => {
 
       // Request a withdrawal
       await marginProgram.methods
-        .requestWithdrawal(new BN(0), usdcWithdrawAmount)
+        .requestWithdrawal(usdcWithdrawAmount, false)
         .accountsStrict({
           marginAccount: user2MarginAccount,
           marginVault: marginVault,
@@ -1098,7 +1098,7 @@ describe("perp-margin-accounts", () => {
 
       // Request withdrawal (this should succeed as it just records the request)
       await marginProgram.methods
-        .requestWithdrawal(largeSolAmount, new BN(0))
+        .requestWithdrawal(largeSolAmount, true)
         .accountsStrict({
           marginAccount: user1MarginAccount,
           marginVault: marginVault,
@@ -1224,7 +1224,7 @@ describe("perp-margin-accounts", () => {
       const smallWithdrawAmount = new BN(LAMPORTS_PER_SOL / 10); // 0.1 SOL
 
       await marginProgram.methods
-        .requestWithdrawal(smallWithdrawAmount, new BN(0))
+        .requestWithdrawal(smallWithdrawAmount, true)
         .accountsStrict({
           marginAccount: user1MarginAccount,
           marginVault: marginVault,
@@ -1396,7 +1396,7 @@ describe("perp-margin-accounts", () => {
 
       // Request withdrawal for the full amount.
       await marginProgram.methods
-        .requestWithdrawal(withdrawalAmount, new BN(0))
+        .requestWithdrawal(withdrawalAmount, true)
         .accountsStrict({
           marginAccount: user1MarginAccount,
           marginVault: marginVault,

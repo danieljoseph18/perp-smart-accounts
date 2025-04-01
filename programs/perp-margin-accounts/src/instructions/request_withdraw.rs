@@ -27,7 +27,7 @@ pub struct RequestWithdrawal<'info> {
 
 // No check for margin amount, as positive PNL may increase this.
 // Margin amount is checked in execute_withdrawal.
-pub fn handler(ctx: Context<RequestWithdrawal>, sol_amount: u64, usdc_amount: u64) -> Result<()> {
+pub fn handler(ctx: Context<RequestWithdrawal>, amount: u64, is_sol: bool) -> Result<()> {
     let margin_account = &mut ctx.accounts.margin_account;
     let clock = Clock::get()?;
 
@@ -45,8 +45,14 @@ pub fn handler(ctx: Context<RequestWithdrawal>, sol_amount: u64, usdc_amount: u6
         MarginError::WithdrawalTimelockNotExpired
     );
 
-    margin_account.pending_sol_withdrawal = sol_amount;
-    margin_account.pending_usdc_withdrawal = usdc_amount;
+    if is_sol {
+        margin_account.pending_sol_withdrawal = amount;
+        margin_account.pending_usdc_withdrawal = 0;
+    } else {
+        margin_account.pending_sol_withdrawal = 0;
+        margin_account.pending_usdc_withdrawal = amount;
+    }
+
     margin_account.last_withdrawal_request = clock.unix_timestamp;
 
     Ok(())

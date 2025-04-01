@@ -287,7 +287,7 @@ describe("perp-margin-accounts", () => {
         await marginProgram.methods
           .requestWithdrawal(
             new BN(LAMPORTS_PER_SOL / 2), // 0.5 SOL
-            new BN(0) // 0 USDC
+            true
           )
           .accountsStrict({
             marginAccount: user1MarginAccount,
@@ -355,10 +355,7 @@ describe("perp-margin-accounts", () => {
 
         // Set up the same for USDC
         await marginProgram.methods
-          .requestWithdrawal(
-            new BN(0), // 0 SOL
-            new BN(1_000_000) // 1 USDC
-          )
+          .requestWithdrawal(new BN(1_000_000), false)
           .accountsStrict({
             marginAccount: user2MarginAccount,
             marginVault: marginVault,

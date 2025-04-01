@@ -33,10 +33,10 @@ pub mod perp_margin_accounts {
 
     pub fn request_withdrawal(
         ctx: Context<RequestWithdrawal>,
-        sol_amount: u64,
-        usdc_amount: u64,
+        amount: u64,
+        is_sol: bool,
     ) -> Result<()> {
-        instructions::request_withdraw::handler(ctx, sol_amount, usdc_amount)
+        instructions::request_withdraw::handler(ctx, amount, is_sol)
     }
 
     pub fn execute_withdrawal(
