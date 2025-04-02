@@ -1,4 +1,4 @@
-use crate::state::*;
+use crate::state::PoolState;
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
