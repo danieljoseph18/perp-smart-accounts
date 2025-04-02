@@ -19,7 +19,7 @@ pub fn process_pnl_update(ctx: &mut Context<ExecuteWithdrawal>, pnl_update: i64)
         ctx.accounts.chainlink_program.to_account_info(),
         ctx.accounts.chainlink_feed.to_account_info(),
     )?;
-    pool_state.sol_usd_price = round.answer;
+    let sol_usd_price: i128 = round.answer;
 
     // Determine which asset to use for settlement based on the provided pool_vault_account
     let use_sol_for_settlement = ctx.accounts.pool_vault_account.key() == pool_state.sol_vault;
@@ -36,9 +36,9 @@ pub fn process_pnl_update(ctx: &mut Context<ExecuteWithdrawal>, pnl_update: i64)
         .ok_or(MarginError::ArithmeticOverflow)?;
 
     if pnl_update > 0 {
-        process_positive_pnl(ctx, pnl_total_adj, use_sol_for_settlement)?;
+        process_positive_pnl(ctx, pnl_total_adj, use_sol_for_settlement, sol_usd_price)?;
     } else {
-        process_negative_pnl(ctx, pnl_total_adj, use_sol_for_settlement)?;
+        process_negative_pnl(ctx, pnl_total_adj, use_sol_for_settlement, sol_usd_price)?;
     }
 
     Ok(())
@@ -49,16 +49,16 @@ fn process_positive_pnl(
     ctx: &mut Context<ExecuteWithdrawal>,
     pnl_total_usd: u128,
     use_sol_for_settlement: bool,
+    sol_usd_price: i128,
 ) -> Result<()> {
     let margin_account = &mut ctx.accounts.margin_account;
-    let pool_state = &ctx.accounts.pool_state;
 
     if use_sol_for_settlement {
         // Convert PnL from USD (8 decimals) to SOL (9 decimals)
         let pnl_sol_native = pnl_total_usd
             .checked_mul(1_000_000_000)
             .ok_or(MarginError::ArithmeticOverflow)?
-            .checked_div(pool_state.sol_usd_price as u128)
+            .checked_div(sol_usd_price as u128)
             .ok_or(MarginError::ArithmeticOverflow)? as u64;
 
         if pnl_sol_native > 0 {
@@ -121,16 +121,16 @@ fn process_negative_pnl(
     ctx: &mut Context<ExecuteWithdrawal>,
     pnl_total_usd: u128,
     use_sol_for_settlement: bool,
+    sol_usd_price: i128,
 ) -> Result<()> {
     let margin_account = &mut ctx.accounts.margin_account;
-    let pool_state = &ctx.accounts.pool_state;
 
     if use_sol_for_settlement {
         // Convert PnL from USD (8 decimals) to SOL (9 decimals)
         let pnl_sol_native = pnl_total_usd
             .checked_mul(1_000_000_000)
             .ok_or(MarginError::ArithmeticOverflow)?
-            .checked_div(pool_state.sol_usd_price as u128)
+            .checked_div(sol_usd_price as u128)
             .ok_or(MarginError::ArithmeticOverflow)? as u64;
 
         // Limit deduction to available balance

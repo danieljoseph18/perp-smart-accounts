@@ -17,7 +17,7 @@ pub struct Withdraw<'info> {
     #[account(
         init_if_needed,
         payer = user,
-        space = 8 + UserState::LEN,
+        space = 8 + UserState::INIT_SPACE,
         seeds = [b"user_state".as_ref(), user.key().as_ref()],
         bump
     )]
@@ -102,15 +102,16 @@ pub fn handler(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<()> {
 
     let sol_vault = pool_state.sol_vault;
     let usdc_vault = pool_state.usdc_vault;
+    let mut sol_usd_price = 0;
 
     if ctx.accounts.vault_account.key() == sol_vault {
         let round = chainlink::latest_round_data(
             ctx.accounts.chainlink_program.to_account_info(),
             ctx.accounts.chainlink_feed.to_account_info(),
         )?;
-        pool_state.sol_usd_price = round.answer;
+        sol_usd_price = round.answer;
     }
-    let total_sol_usd = get_sol_usd_value(pool_state.sol_deposited, pool_state.sol_usd_price)?;
+    let total_sol_usd = get_sol_usd_value(pool_state.sol_deposited, sol_usd_price)?;
     let current_aum = total_sol_usd
         .checked_add(
             pool_state
@@ -128,7 +129,7 @@ pub fn handler(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<()> {
         .ok_or(VaultError::MathError)?;
 
     let token_amount = if ctx.accounts.vault_account.key() == sol_vault {
-        get_sol_amount_from_usd(withdrawal_usd_value as u64, pool_state.sol_usd_price)?
+        get_sol_amount_from_usd(withdrawal_usd_value as u64, sol_usd_price)?
     } else if ctx.accounts.vault_account.key() == usdc_vault {
         // Convert USD (8 decimals) to USDC (6 decimals)
         (withdrawal_usd_value

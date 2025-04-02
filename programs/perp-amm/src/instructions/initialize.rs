@@ -7,17 +7,13 @@ pub struct Initialize<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
 
-    /// The authority that can call admin functions (e.g. margin program)
-    /// CHECK: This is just a pubkey
-    pub authority: AccountInfo<'info>,
-
     /// The PoolState (PDA) to store global info about the pool
     #[account(
         init,
         payer = admin,
-        space = 8 + PoolState::MAX_LEN,
+        space = 8 + PoolState::INIT_SPACE,
         seeds = [b"pool_state".as_ref()],
-        bump
+        bump,
     )]
     pub pool_state: Account<'info, PoolState>,
 
@@ -26,7 +22,7 @@ pub struct Initialize<'info> {
         payer = admin,
         seeds = [b"sol_vault".as_ref(), pool_state.key().as_ref()],
         bump,
-        token::mint = sol_mint, // <-- CORRECT: Refers to the sol_mint field above
+        token::mint = sol_mint, 
         token::authority = pool_state,
     )]
     pub sol_vault: Account<'info, TokenAccount>,
@@ -53,11 +49,9 @@ pub struct Initialize<'info> {
     )]
     pub usdc_reward_vault: Account<'info, TokenAccount>,
 
-    #[account(mut)]
-    pub sol_mint: Account<'info, Mint>,
+    pub sol_mint: Box<Account<'info, Mint>>,
 
-    #[account(mut)]
-    pub usdc_mint: Account<'info, Mint>,
+    pub usdc_mint: Box<Account<'info, Mint>>,
 
     /// LP token mint
     #[account(
@@ -68,10 +62,8 @@ pub struct Initialize<'info> {
         mint::freeze_authority = pool_state
     )]
     pub lp_token_mint: Account<'info, Mint>,
-
-    #[account(address = anchor_spl::token::ID)]
+    
     pub token_program: Program<'info, Token>,
-
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
 }
@@ -82,8 +74,8 @@ pub fn handler(ctx: Context<Initialize>) -> Result<()> {
     pool_state.admin = ctx.accounts.admin.key();
     
     // Initialize authorities with the provided authority
-    let mut authorities = Vec::new();
-    authorities.push(ctx.accounts.authority.key());
+    let authorities = Vec::new();
+
     pool_state.authorities = authorities;
     pool_state.sol_vault = ctx.accounts.sol_vault.key();
     pool_state.usdc_vault = ctx.accounts.usdc_vault.key();

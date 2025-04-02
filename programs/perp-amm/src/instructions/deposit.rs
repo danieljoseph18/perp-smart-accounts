@@ -31,7 +31,7 @@ pub struct Deposit<'info> {
     #[account(
         init_if_needed,
         payer = user,
-        space = 8 + UserState::LEN,
+        space = 8 + UserState::INIT_SPACE,
         seeds = [b"user_state".as_ref(), user.key().as_ref()],
         bump
     )]
@@ -94,13 +94,15 @@ pub fn handler(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
         .checked_sub(fee_amount)
         .ok_or(VaultError::MathError)?;
 
+    let mut sol_usd_price = 0;
+
     // 4. Update price feeds and accumulated fees.
     if ctx.accounts.vault_account.key() == pool_state.sol_vault {
         let round = chainlink::latest_round_data(
             ctx.accounts.chainlink_program.to_account_info(),
             ctx.accounts.chainlink_feed.to_account_info(),
         )?;
-        pool_state.sol_usd_price = round.answer;
+        sol_usd_price = round.answer;
         pool_state.accumulated_sol_fees = pool_state
             .accumulated_sol_fees
             .checked_add(fee_amount)
@@ -126,7 +128,7 @@ pub fn handler(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
     )?;
 
     // 6. Compute initial Assets Under Management (AUM).
-    let total_sol_usd = get_sol_usd_value(pool_state.sol_deposited, pool_state.sol_usd_price)?;
+    let total_sol_usd = get_sol_usd_value(pool_state.sol_deposited, sol_usd_price)?;
     let initial_aum = total_sol_usd
         .checked_add(
             pool_state
@@ -142,7 +144,7 @@ pub fn handler(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
             .sol_deposited
             .checked_add(deposit_amount)
             .ok_or(VaultError::MathError)?;
-        get_sol_usd_value(deposit_amount, pool_state.sol_usd_price)? as u128
+        get_sol_usd_value(deposit_amount, sol_usd_price)? as u128
     } else if ctx.accounts.vault_account.key() == pool_state.usdc_vault {
         pool_state.usdc_deposited = pool_state
             .usdc_deposited

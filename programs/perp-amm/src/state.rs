@@ -25,11 +25,14 @@ pub const MAX_AUTHORITIES: usize = 10;
 
 /// PoolState holds global info about the liquidity pool.
 #[account]
+#[derive(InitSpace)]
 pub struct PoolState {
     /// Admin authority who can withdraw funds and set rewards
     pub admin: Pubkey,
-    
+
     /// Authorities that can perform admin operations (e.g. margin program)
+    /// Vec stored on heap, reduces stack usage
+    #[max_len(MAX_AUTHORITIES)]
     pub authorities: Vec<Pubkey>,
 
     /// SOL vault account (token account for wrapped SOL or special handling)
@@ -64,9 +67,6 @@ pub struct PoolState {
     /// Vault holding USDC rewards
     pub usdc_reward_vault: Pubkey,
 
-    /// Current SOL/USD price from Chainlink (8 decimals from feed)
-    pub sol_usd_price: i128,
-
     /// How many USDC tokens the admin deposited for this reward period (6 decimals)
     /// Note: These are raw USDC amounts, not USD values
     pub total_rewards_deposited: u64,
@@ -91,36 +91,11 @@ pub struct PoolState {
 }
 
 impl PoolState {
-    // Base size not including variable length authorities
-    pub const BASE_LEN: usize = 32  // admin
-        + 32                  // sol_vault
-        + 32                  // usdc_vault
-        + 32                  // usdc_mint
-        + 32                  // lp_token_mint
-        + 8                   // sol_deposited
-        + 8                   // usdc_deposited
-        + 8                   // tokens_per_interval
-        + 8                   // reward_start_time
-        + 8                   // reward_end_time
-        + 32                  // usdc_reward_vault
-        + 16                  // sol_usd_price (i128)
-        + 8                   // total_rewards_deposited
-        + 8                   // total_rewards_claimed
-        + 16                  // cumulative_reward_per_token
-        + 8                   // last_distribution_time
-        + 8                   // accumulated_sol_fees
-        + 8;                  // accumulated_usdc_fees
-        
-    // Maximum size with max authorities allocation
-    pub const MAX_LEN: usize = Self::BASE_LEN + 
-        4 + // vec discriminator
-        (32 * MAX_AUTHORITIES); // pubkeys in authorities vec
-        
     /// Check if a public key is an authorized authority
     pub fn is_authority(&self, key: &Pubkey) -> bool {
         self.authorities.iter().any(|auth| auth == key)
     }
-    
+
     /// Check if a public key is the admin
     pub fn is_admin(&self, key: &Pubkey) -> bool {
         self.admin == *key
@@ -129,6 +104,7 @@ impl PoolState {
 
 /// UserState stores user-specific info (in practice often combined into a single PDA).
 #[account]
+#[derive(InitSpace)]
 pub struct UserState {
     /// User pubkey
     pub owner: Pubkey,
@@ -144,14 +120,6 @@ pub struct UserState {
 
     /// Previous cumulative reward per token
     pub previous_cumulated_reward_per_token: u128,
-}
-
-impl UserState {
-    pub const LEN: usize = 32 // owner
-        + 8  // lp_token_balance
-        + 8  // last_claim_timestamp
-        + 8  // pending_rewards
-        + 16; // previous_cumulated_reward_per_token
 }
 
 // -----------------------------------------------
