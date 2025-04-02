@@ -40,7 +40,7 @@ pub struct DepositMargin<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<DepositMargin>, amount: u64) -> Result<()> {
+pub fn deposit_margin(ctx: Context<DepositMargin>, amount: u64) -> Result<()> {
     let margin_account = &mut ctx.accounts.margin_account;
 
     if amount == 0 {

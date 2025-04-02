@@ -68,7 +68,7 @@ pub struct Deposit<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
+pub fn deposit(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
     let pool_state = &mut ctx.accounts.pool_state;
     let user_state = &mut ctx.accounts.user_state;
     let clock = Clock::get()?;

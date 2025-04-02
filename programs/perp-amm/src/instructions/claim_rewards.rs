@@ -43,7 +43,7 @@ pub struct ClaimRewards<'info> {
     pub lp_token_mint: Account<'info, Mint>,
 }
 
-pub fn handler(ctx: Context<ClaimRewards>) -> Result<()> {
+pub fn claim_rewards(ctx: Context<ClaimRewards>) -> Result<()> {
     // Store validation values up front
     let now = Clock::get()?.unix_timestamp as u64;
     let reward_start_time = ctx.accounts.pool_state.reward_start_time;

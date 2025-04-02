@@ -31,7 +31,7 @@ pub struct Initialize<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-pub fn handler(
+pub fn initialize(
     ctx: Context<Initialize>,
     withdrawal_timelock: i64,
     chainlink_program: Pubkey,
@@ -41,7 +41,7 @@ pub fn handler(
 
     margin_vault.margin_sol_vault = ctx.accounts.margin_sol_vault.key();
     margin_vault.margin_usdc_vault = ctx.accounts.margin_usdc_vault.key();
-    
+
     // Initialize authorities with the signer as the first authority
     let mut authorities = Vec::new();
     authorities.push(ctx.accounts.authority.key());

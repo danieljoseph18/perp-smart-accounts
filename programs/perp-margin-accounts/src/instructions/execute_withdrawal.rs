@@ -78,7 +78,7 @@ pub struct ExecuteWithdrawal<'info> {
 }
 
 // Split the function to reduce stack usage
-pub fn handler(
+pub fn execute_withdrawal(
     mut ctx: Context<ExecuteWithdrawal>,
     pnl_update: i64,
     locked_sol: u64,

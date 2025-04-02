@@ -49,7 +49,7 @@ pub struct AdminWithdraw<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<AdminWithdraw>, amount: u64) -> Result<()> {
+pub fn admin_withdraw(ctx: Context<AdminWithdraw>, amount: u64) -> Result<()> {
     // Manual check: Ensure that either the admin or authority role is calling.
     if ctx.accounts.admin.key() != ctx.accounts.pool_state.admin
         && !ctx

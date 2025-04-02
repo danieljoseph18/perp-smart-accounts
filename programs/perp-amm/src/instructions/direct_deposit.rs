@@ -50,7 +50,7 @@ pub struct DirectDeposit<'info> {
  * @dev Direct deposit of WSOL or USDC into the pool.
  * Receives no LP tokens in return, just boosts the pool's AUM.
  */
-pub fn handler(ctx: Context<DirectDeposit>, amount: u64) -> Result<()> {
+pub fn direct_deposit(ctx: Context<DirectDeposit>, amount: u64) -> Result<()> {
     let pool_state = &mut ctx.accounts.pool_state;
 
     let transfer_ctx = CpiContext::new(

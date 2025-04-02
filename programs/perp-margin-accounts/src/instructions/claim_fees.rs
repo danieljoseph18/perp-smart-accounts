@@ -43,7 +43,7 @@ pub struct ClaimFees<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-pub fn handler(ctx: Context<ClaimFees>) -> Result<()> {
+pub fn claim_fees(ctx: Context<ClaimFees>) -> Result<()> {
     let margin_vault = &mut ctx.accounts.margin_vault;
 
     // Claim accumulated SOL fees if any

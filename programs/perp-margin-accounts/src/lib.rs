@@ -19,7 +19,7 @@ pub mod perp_margin_accounts {
         chainlink_program: Pubkey,
         chainlink_feed: Pubkey,
     ) -> Result<()> {
-        instructions::initialize::handler(
+        instructions::initialize::initialize(
             ctx,
             withdrawal_timelock,
             chainlink_program,
@@ -28,7 +28,7 @@ pub mod perp_margin_accounts {
     }
 
     pub fn deposit_margin(ctx: Context<DepositMargin>, amount: u64) -> Result<()> {
-        instructions::deposit::handler(ctx, amount)
+        instructions::deposit::deposit_margin(ctx, amount)
     }
 
     pub fn request_withdrawal(
@@ -36,7 +36,7 @@ pub mod perp_margin_accounts {
         amount: u64,
         is_sol: bool,
     ) -> Result<()> {
-        instructions::request_withdraw::handler(ctx, amount, is_sol)
+        instructions::request_withdrawal::request_withdrawal(ctx, amount, is_sol)
     }
 
     pub fn execute_withdrawal(
@@ -47,7 +47,7 @@ pub mod perp_margin_accounts {
         sol_fees_owed: u64,
         usdc_fees_owed: u64,
     ) -> Result<()> {
-        instructions::execute_withdraw::handler(
+        instructions::execute_withdrawal::execute_withdrawal(
             ctx,
             pnl_update,
             locked_sol,
@@ -58,22 +58,25 @@ pub mod perp_margin_accounts {
     }
 
     pub fn liquidate_margin_account(ctx: Context<LiquidateMarginAccount>) -> Result<()> {
-        instructions::liquidate::handler(ctx)
+        instructions::liquidate::liquidate_margin_account(ctx)
     }
 
     pub fn cancel_withdrawal(ctx: Context<CancelWithdrawal>) -> Result<()> {
-        instructions::cancel_withdraw::handler(ctx)
+        instructions::cancel_withdrawal::cancel_withdrawal(ctx)
     }
 
     pub fn claim_fees(ctx: Context<ClaimFees>) -> Result<()> {
-        instructions::claim_fees::handler(ctx)
+        instructions::claim_fees::claim_fees(ctx)
     }
-    
+
     pub fn add_authority(ctx: Context<AddAuthority>, new_authority: Pubkey) -> Result<()> {
-        instructions::add_authority::handler(ctx, new_authority)
+        instructions::add_authority::add_authority(ctx, new_authority)
     }
-    
-    pub fn remove_authority(ctx: Context<RemoveAuthority>, authority_to_remove: Pubkey) -> Result<()> {
-        instructions::remove_authority::handler(ctx, authority_to_remove)
+
+    pub fn remove_authority(
+        ctx: Context<RemoveAuthority>,
+        authority_to_remove: Pubkey,
+    ) -> Result<()> {
+        instructions::remove_authority::remove_authority(ctx, authority_to_remove)
     }
 }

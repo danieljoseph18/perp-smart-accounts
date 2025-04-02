@@ -24,6 +24,6 @@ pub struct CloseUserState<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(_ctx: Context<CloseUserState>) -> Result<()> {
+pub fn close_user_state(_ctx: Context<CloseUserState>) -> Result<()> {
     Ok(())
 }

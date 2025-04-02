@@ -28,7 +28,7 @@ pub struct StartRewards<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-pub fn handler(
+pub fn start_rewards(
     ctx: Context<StartRewards>,
     usdc_amount: u64, // Total rewards for the period
 ) -> Result<()> {

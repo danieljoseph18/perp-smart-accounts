@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Created with Anchor"
 edition = "2021"
 
+[lints.rust]
+unexpected_cfgs = "allow"
+
 [lib]
 crate-type = ["cdylib", "lib"]
 name = "perp_amm"
@@ -17,6 +20,10 @@ no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+solana = []
 
 [dependencies]
 anchor-lang = { workspace = true }

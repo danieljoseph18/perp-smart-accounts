@@ -27,7 +27,11 @@ pub struct RequestWithdrawal<'info> {
 
 // No check for margin amount, as positive PNL may increase this.
 // Margin amount is checked in execute_withdrawal.
-pub fn handler(ctx: Context<RequestWithdrawal>, amount: u64, is_sol: bool) -> Result<()> {
+pub fn request_withdrawal(
+    ctx: Context<RequestWithdrawal>,
+    amount: u64,
+    is_sol: bool,
+) -> Result<()> {
     let margin_account = &mut ctx.accounts.margin_account;
     let clock = Clock::get()?;
 

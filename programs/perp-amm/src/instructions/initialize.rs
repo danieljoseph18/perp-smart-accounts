@@ -68,7 +68,7 @@ pub struct Initialize<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-pub fn handler(ctx: Context<Initialize>) -> Result<()> {
+pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
     let pool_state = &mut ctx.accounts.pool_state;
 
     pool_state.admin = ctx.accounts.admin.key();

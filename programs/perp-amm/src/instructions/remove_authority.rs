@@ -11,7 +11,7 @@ pub struct RemoveAuthority<'info> {
     pub pool_state: Account<'info, PoolState>,
 }
 
-pub fn handler(ctx: Context<RemoveAuthority>, authority_to_remove: Pubkey) -> Result<()> {
+pub fn remove_authority(ctx: Context<RemoveAuthority>, authority_to_remove: Pubkey) -> Result<()> {
     let pool_state = &mut ctx.accounts.pool_state;
 
     // Ensure only the admin can remove authorities

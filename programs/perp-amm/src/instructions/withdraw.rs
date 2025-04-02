@@ -65,7 +65,7 @@ pub struct Withdraw<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<()> {
+pub fn withdraw(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<()> {
     // --- Pre-burn & reward update logic remains unchanged ---
     let pool_state_info = ctx.accounts.pool_state.to_account_info();
     let pool_state_bump = ctx.bumps.pool_state;

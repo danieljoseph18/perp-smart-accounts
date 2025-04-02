@@ -24,7 +24,7 @@ pub struct CancelWithdrawal<'info> {
     pub authority: Signer<'info>,
 }
 
-pub fn handler(ctx: Context<CancelWithdrawal>) -> Result<()> {
+pub fn cancel_withdrawal(ctx: Context<CancelWithdrawal>) -> Result<()> {
     let margin_account = &mut ctx.accounts.margin_account;
 
     // Clear pending withdrawals

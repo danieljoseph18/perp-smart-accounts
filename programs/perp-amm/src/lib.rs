@@ -35,66 +35,66 @@ pub mod perp_amm {
 
     /// Initialize the liquidity pool
     pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        instructions::initialize::handler(ctx)
+        instructions::initialize::initialize(ctx)
     }
 
     /// Close the pool (admin only)
     pub fn close_pool(ctx: Context<ClosePool>) -> Result<()> {
-        instructions::close_pool::handler(ctx)
+        instructions::close_pool::close_pool(ctx)
     }
 
     /// Close the user state (user only)
     pub fn close_user_state(ctx: Context<CloseUserState>) -> Result<()> {
-        instructions::close_user_state::handler(ctx)
+        instructions::close_user_state::close_user_state(ctx)
     }
 
     /// Deposit SOL or USDC into the pool
     pub fn deposit(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
-        instructions::deposit::handler(ctx, token_amount)
+        instructions::deposit::deposit(ctx, token_amount)
     }
 
     /// Withdraw tokens from the pool
     pub fn withdraw(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<()> {
-        instructions::withdraw::handler(ctx, lp_token_amount)
+        instructions::withdraw::withdraw(ctx, lp_token_amount)
     }
 
     /// Admin function to withdraw tokens (market making losses)
     pub fn admin_withdraw(ctx: Context<AdminWithdraw>, amount: u64) -> Result<()> {
-        instructions::admin_withdraw::handler(ctx, amount)
+        instructions::admin_withdraw::admin_withdraw(ctx, amount)
     }
 
     /// Admin function to deposit tokens (market making profits)
     pub fn direct_deposit(ctx: Context<DirectDeposit>, amount: u64) -> Result<()> {
-        instructions::direct_deposit::handler(ctx, amount)
+        instructions::direct_deposit::direct_deposit(ctx, amount)
     }
 
     /// Admin function to start new reward distribution
     pub fn start_rewards(ctx: Context<StartRewards>, usdc_amount: u64) -> Result<()> {
-        instructions::start_rewards::handler(ctx, usdc_amount)
+        instructions::start_rewards::start_rewards(ctx, usdc_amount)
     }
 
     /// Claim user rewards
     pub fn claim_rewards(ctx: Context<ClaimRewards>) -> Result<()> {
-        instructions::claim_rewards::handler(ctx)
+        instructions::claim_rewards::claim_rewards(ctx)
     }
 
     pub fn force_close_user_state(ctx: Context<ForceCloseUserState>) -> Result<()> {
-        instructions::force_close_user_state::handler(ctx)
+        instructions::force_close_user_state::force_close_user_state(ctx)
     }
 
     /// Admin function to claim accumulated fees
     pub fn claim_fees(ctx: Context<ClaimFees>) -> Result<()> {
-        instructions::claim_fees::handler(ctx)
+        instructions::claim_fees::claim_fees(ctx)
     }
 
     pub fn add_authority(ctx: Context<AddAuthority>, new_authority: Pubkey) -> Result<()> {
-        instructions::add_authority::handler(ctx, new_authority)
+        instructions::add_authority::add_authority(ctx, new_authority)
     }
 
     pub fn remove_authority(
         ctx: Context<RemoveAuthority>,
         authority_to_remove: Pubkey,
     ) -> Result<()> {
-        instructions::remove_authority::handler(ctx, authority_to_remove)
+        instructions::remove_authority::remove_authority(ctx, authority_to_remove)
     }
 }

@@ -12,7 +12,7 @@ pub struct AddAuthority<'info> {
     pub pool_state: Account<'info, PoolState>,
 }
 
-pub fn handler(ctx: Context<AddAuthority>, new_authority: Pubkey) -> Result<()> {
+pub fn add_authority(ctx: Context<AddAuthority>, new_authority: Pubkey) -> Result<()> {
     let pool_state = &mut ctx.accounts.pool_state;
 
     // Ensure only the admin can add new authorities

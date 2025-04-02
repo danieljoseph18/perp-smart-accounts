@@ -17,7 +17,7 @@ pub struct ClosePool<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<ClosePool>) -> Result<()> {
+pub fn close_pool(ctx: Context<ClosePool>) -> Result<()> {
     // Verify the signer is the admin
     require_keys_eq!(
         ctx.accounts.admin.key(),
