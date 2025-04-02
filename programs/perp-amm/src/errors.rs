@@ -40,6 +40,8 @@ pub enum ErrorCode {
     CannotRemoveLastAuthority,
     #[msg("Authority not found")]
     AuthorityNotFound,
+    #[msg("Invalid PDA address")]
+    InvalidPdaAddress,
 }
 
 // For backward compatibility with existing code

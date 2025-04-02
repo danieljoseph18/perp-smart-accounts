@@ -37,6 +37,16 @@ pub mod perp_amm {
     pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
         instructions::initialize::initialize(ctx)
     }
+    
+    /// Initialize a token vault (sol_vault, usdc_vault, or usdc_reward_vault)
+    pub fn initialize_token_vault(ctx: Context<InitializeTokenVault>, seed: Vec<u8>) -> Result<()> {
+        instructions::initialize::initialize_token_vault(ctx, &seed)
+    }
+    
+    /// Initialize the LP token mint
+    pub fn initialize_lp_mint(ctx: Context<InitializeLpMint>) -> Result<()> {
+        instructions::initialize::initialize_lp_mint(ctx)
+    }
 
     /// Close the pool (admin only)
     pub fn close_pool(ctx: Context<ClosePool>) -> Result<()> {
