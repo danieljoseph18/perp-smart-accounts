@@ -7,7 +7,7 @@ pub mod util;
 
 use instructions::*;
 
-declare_id!("F3bSdzeGsfYKSGWv8jBfco1wbsvtNB5ts7cDsvnUPZRg");
+declare_id!("EZKKGMsZbG3fwUa61XFeBYdYqpuLnKMPyZqNo1nyeSU9");
 
 #[program]
 pub mod perp_margin_accounts {

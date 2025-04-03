@@ -6,8 +6,8 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-perp_amm = "BJHMHZR6evc2HzgiBoM2ENUYwYxaCuxzWd4ztMCGWcwp"
-perp_margin_accounts = "F3bSdzeGsfYKSGWv8jBfco1wbsvtNB5ts7cDsvnUPZRg"
+perp_amm = "GG2jR83szT5N1jTyVPC2dUC8Yzfg3R77Sn1U7ugDtnoN"
+perp_margin_accounts = "EZKKGMsZbG3fwUa61XFeBYdYqpuLnKMPyZqNo1nyeSU9"
 
 [registry]
 url = "https://api.apr.dev"

@@ -8,7 +8,7 @@ pub mod state;
 pub mod util;
 
 // Single program ID for this entire program
-declare_id!("BJHMHZR6evc2HzgiBoM2ENUYwYxaCuxzWd4ztMCGWcwp");
+declare_id!("GG2jR83szT5N1jTyVPC2dUC8Yzfg3R77Sn1U7ugDtnoN");
 
 pub const NATIVE_MINT: &str = "So11111111111111111111111111111111111111112";
 
