@@ -94,15 +94,15 @@ pub fn deposit(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
         .checked_sub(fee_amount)
         .ok_or(VaultError::MathError)?;
 
-    let mut sol_usd_price = 0;
+    let round = chainlink::latest_round_data(
+        ctx.accounts.chainlink_program.to_account_info(),
+        ctx.accounts.chainlink_feed.to_account_info(),
+    )?;
+
+    let sol_usd_price = round.answer;
 
     // 4. Update price feeds and accumulated fees.
     if ctx.accounts.vault_account.key() == pool_state.sol_vault {
-        let round = chainlink::latest_round_data(
-            ctx.accounts.chainlink_program.to_account_info(),
-            ctx.accounts.chainlink_feed.to_account_info(),
-        )?;
-        sol_usd_price = round.answer;
         pool_state.accumulated_sol_fees = pool_state
             .accumulated_sol_fees
             .checked_add(fee_amount)
@@ -160,15 +160,15 @@ pub fn deposit(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
 
     // 8. Calculate how many LP tokens to mint.
     let lp_supply = ctx.accounts.lp_token_mint.supply;
-    let lp_to_mint = if lp_supply == 0 {
+    let lp_to_mint: u128 = if lp_supply == 0 {
         // USD value in 10^8, LP tokens are 10^9 so we mul by 10
-        (deposit_usd.checked_mul(10).ok_or(VaultError::MathError)?) as u64
+        (deposit_usd.checked_mul(10).ok_or(VaultError::MathError)?) as u128
     } else {
         (deposit_usd
             .checked_mul(lp_supply as u128)
             .ok_or(VaultError::MathError)?
             .checked_div(initial_aum.max(1) as u128)
-            .ok_or(VaultError::MathError)?) as u64
+            .ok_or(VaultError::MathError)?) as u128
     };
 
     // 9. Mint LP tokens to the user.
@@ -182,7 +182,7 @@ pub fn deposit(ctx: Context<Deposit>, token_amount: u64) -> Result<()> {
             },
         )
         .with_signer(&[&[b"pool_state".as_ref(), &[ctx.bumps.pool_state]]]),
-        lp_to_mint,
+        lp_to_mint as u64,
     )?;
 
     // 10. Update the user's LP token balance.

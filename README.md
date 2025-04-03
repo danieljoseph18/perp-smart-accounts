@@ -5,11 +5,11 @@ A Solana program for managing a liquidity pool with staking and rewards function
 ## Program Address
 
 - Perp AMM: `BJHMHZR6evc2HzgiBoM2ENUYwYxaCuxzWd4ztMCGWcwp`
-- Perp Margin Accounts: `BLywAsuyCkiC2gja3bRf8x3xxC2RPf4DDGwNauT8idZ5`
+- Perp Margin Accounts: `F3bSdzeGsfYKSGWv8jBfco1wbsvtNB5ts7cDsvnUPZRg`
 
 ## Known Issues
 
-- USDC price is assumed to be 1. This needs to be replaced with a Chainlink Oracle
+- USDC price is assumed to be 1.
 
 ## Testing
 

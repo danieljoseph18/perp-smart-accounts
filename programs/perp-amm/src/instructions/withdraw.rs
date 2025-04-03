@@ -77,7 +77,7 @@ pub fn withdraw(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<()> {
         return err!(VaultError::InvalidTokenAmount);
     }
 
-    if user_state.lp_token_balance < lp_token_amount {
+    if user_state.lp_token_balance < lp_token_amount as u128 {
         return err!(VaultError::InsufficientLpBalance);
     }
 
@@ -97,21 +97,21 @@ pub fn withdraw(ctx: Context<Withdraw>, lp_token_amount: u64) -> Result<()> {
 
     user_state.lp_token_balance = user_state
         .lp_token_balance
-        .checked_sub(lp_token_amount)
+        .checked_sub(lp_token_amount as u128)
         .ok_or(VaultError::MathError)?;
 
     let sol_vault = pool_state.sol_vault;
     let usdc_vault = pool_state.usdc_vault;
-    let mut sol_usd_price = 0;
 
-    if ctx.accounts.vault_account.key() == sol_vault {
-        let round = chainlink::latest_round_data(
-            ctx.accounts.chainlink_program.to_account_info(),
-            ctx.accounts.chainlink_feed.to_account_info(),
-        )?;
-        sol_usd_price = round.answer;
-    }
+    let round = chainlink::latest_round_data(
+        ctx.accounts.chainlink_program.to_account_info(),
+        ctx.accounts.chainlink_feed.to_account_info(),
+    )?;
+
+    let sol_usd_price = round.answer;
+
     let total_sol_usd = get_sol_usd_value(pool_state.sol_deposited, sol_usd_price)?;
+
     let current_aum = total_sol_usd
         .checked_add(
             pool_state

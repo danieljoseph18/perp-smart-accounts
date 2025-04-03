@@ -57,7 +57,7 @@ pub fn update_rewards(
 
     user_state.pending_rewards = user_state
         .pending_rewards
-        .checked_add(user_reward as u64)
+        .checked_add(user_reward)
         .ok_or(VaultError::MathError)?;
 
     user_state.previous_cumulated_reward_per_token = pool_state.cumulative_reward_per_token;

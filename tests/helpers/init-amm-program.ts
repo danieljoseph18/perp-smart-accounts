@@ -155,6 +155,8 @@ export async function setupAmmProgram(
     );
     adminSolAccount = adminSolAccountInfo.address;
 
+    console.log("- Admin SOL account:", adminSolAccount.toString());
+
     // Mint some USDC to accounts if they have low balance
     const adminUsdcBalance = (
       await getAccount(provider.connection, adminUsdcAccount)
@@ -229,6 +231,7 @@ export async function setupAmmProgram(
 
       const wrapTx = new anchor.web3.Transaction().add(wrapIx);
       await provider.sendAndConfirm(wrapTx, [admin]);
+      console.log("✓ SOL wrapped successfully!");
     }
   }
 
@@ -390,13 +393,84 @@ export async function setupAmmProgram(
       .initialize()
       .accountsStrict({
         admin: admin.publicKey,
-        authority: marginProgram.programId,
         poolState,
         solVault: solVault,
         usdcVault: usdcVault,
         solMint: solMint,
         usdcMint: usdcMint,
         usdcRewardVault: usdcRewardVault,
+        lpTokenMint,
+        systemProgram: SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([admin])
+      .rpc();
+
+    console.log(
+      `✓ Pool state initialized successfully! ${poolState.toString()}`
+    );
+
+    // Initialize SOL vault
+    await program.methods
+      .initializeTokenVault(Buffer.from("sol_vault"))
+      .accountsStrict({
+        admin: admin.publicKey,
+        poolState,
+        vault: solVault,
+        mint: solMint,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([admin])
+      .rpc();
+
+    console.log(`✓ SOL vault initialized successfully! ${solVault.toString()}`);
+
+    // Initialize USDC vault
+    await program.methods
+      .initializeTokenVault(Buffer.from("usdc_vault"))
+      .accountsStrict({
+        admin: admin.publicKey,
+        poolState,
+        vault: usdcVault,
+        mint: usdcMint,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([admin])
+      .rpc();
+
+    console.log(
+      `✓ USDC vault initialized successfully! ${usdcVault.toString()}`
+    );
+
+    // Initialize USDC reward vault
+    await program.methods
+      .initializeTokenVault(Buffer.from("usdc_reward_vault"))
+      .accountsStrict({
+        admin: admin.publicKey,
+        poolState,
+        vault: usdcRewardVault,
+        mint: usdcMint,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([admin])
+      .rpc();
+
+    console.log(
+      `✓ USDC reward vault initialized successfully! ${usdcRewardVault.toString()}`
+    );
+
+    // Initialize LP token mint
+    await program.methods
+      .initializeLpMint()
+      .accountsStrict({
+        admin: admin.publicKey,
+        poolState,
         lpTokenMint,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
@@ -405,8 +479,34 @@ export async function setupAmmProgram(
       .signers([admin, lpTokenMintKeypair])
       .rpc();
 
-    console.log("✓ Perp AMM program initialized successfully!");
-    console.log("LP token mint:", lpTokenMint.toString());
+    console.log("✓ LP token mint initialized successfully!");
+
+    // Add authorities to the pool state
+    console.log("Adding authorities to pool state...");
+
+    // Add the perp amm program as an authority for CPI calls
+    await program.methods
+      .addAuthority(program.programId)
+      .accountsStrict({
+        admin: admin.publicKey,
+        poolState,
+      })
+      .signers([admin])
+      .rpc();
+
+    console.log("✓ Added perp amm program as authority");
+
+    // Add the admin as an authority
+    await program.methods
+      .addAuthority(admin.publicKey)
+      .accountsStrict({
+        admin: admin.publicKey,
+        poolState,
+      })
+      .signers([admin])
+      .rpc();
+
+    console.log("✓ Added admin as authority");
   }
 
   return {

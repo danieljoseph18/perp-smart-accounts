@@ -110,13 +110,13 @@ pub struct UserState {
     pub owner: Pubkey,
 
     /// User's LP token balance (tracked within the program, not minted supply)
-    pub lp_token_balance: u64,
+    pub lp_token_balance: u128,
 
     /// Last time user claimed (or had rewards updated)
     pub last_claim_timestamp: u64,
 
     /// Accumulated USDC rewards that have not yet been claimed
-    pub pending_rewards: u64,
+    pub pending_rewards: u128,
 
     /// Previous cumulative reward per token
     pub previous_cumulated_reward_per_token: u128,

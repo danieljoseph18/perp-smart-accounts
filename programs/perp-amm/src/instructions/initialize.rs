@@ -1,6 +1,6 @@
 use crate::state::PoolState;
 use anchor_lang::prelude::*;
-use anchor_spl::token::{Token, Mint, TokenAccount};
+use anchor_spl::token::{Mint, Token, TokenAccount};
 
 /// First instruction - initialize just the pool state
 #[derive(Accounts)]
@@ -30,7 +30,7 @@ pub struct Initialize<'info> {
     pub usdc_mint: UncheckedAccount<'info>,
     /// CHECK: Will be initialized in a separate instruction to avoid stack usage
     pub lp_token_mint: UncheckedAccount<'info>,
-    
+
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
 }
@@ -41,10 +41,10 @@ pub struct Initialize<'info> {
 pub struct InitializeTokenVault<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
-    
+
     /// Pool state (PDA)
     pub pool_state: Account<'info, PoolState>,
-    
+
     /// The vault token account to initialize
     #[account(
         init,
@@ -55,10 +55,10 @@ pub struct InitializeTokenVault<'info> {
         token::authority = pool_state,
     )]
     pub vault: Box<Account<'info, TokenAccount>>,
-    
+
     /// The mint for this token account
     pub mint: Box<Account<'info, Mint>>,
-    
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
@@ -69,10 +69,10 @@ pub struct InitializeTokenVault<'info> {
 pub struct InitializeLpMint<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
-    
+
     /// Pool state that will be the mint authority
     pub pool_state: Account<'info, PoolState>,
-    
+
     /// The LP token mint to initialize
     #[account(
         init,
@@ -82,7 +82,7 @@ pub struct InitializeLpMint<'info> {
         mint::freeze_authority = pool_state,
     )]
     pub lp_token_mint: Box<Account<'info, Mint>>,
-    
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
@@ -97,21 +97,21 @@ pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
     let usdc_mint_key = ctx.accounts.usdc_mint.key();
     let lp_token_mint_key = ctx.accounts.lp_token_mint.key();
     let usdc_reward_vault_key = ctx.accounts.usdc_reward_vault.key();
-    
+
     // Set the pool state fields
     let pool_state = &mut ctx.accounts.pool_state;
-    
+
     // Set admin and initialize empty authorities list
     pool_state.admin = admin_key;
     pool_state.authorities = Vec::new();
-    
+
     // Set vault and mint addresses
     pool_state.sol_vault = sol_vault_key;
     pool_state.usdc_vault = usdc_vault_key;
     pool_state.usdc_mint = usdc_mint_key;
     pool_state.lp_token_mint = lp_token_mint_key;
     pool_state.usdc_reward_vault = usdc_reward_vault_key;
-    
+
     // Initialize numeric fields to 0
     pool_state.sol_deposited = 0;
     pool_state.usdc_deposited = 0;
@@ -133,7 +133,7 @@ pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
 pub fn initialize_token_vault(ctx: Context<InitializeTokenVault>, _seed: &[u8]) -> Result<()> {
     // Log the vault we just created
     msg!("Initialized token vault: {}", ctx.accounts.vault.key());
-    
+
     // Return success - Anchor has handled all the initialization
     Ok(())
 }
@@ -141,6 +141,9 @@ pub fn initialize_token_vault(ctx: Context<InitializeTokenVault>, _seed: &[u8]) 
 // Handler function to initialize the LP token mint
 // All initialization is handled by Anchor constraints
 pub fn initialize_lp_mint(ctx: Context<InitializeLpMint>) -> Result<()> {
-    msg!("Initialized LP token mint: {}", ctx.accounts.lp_token_mint.key());
+    msg!(
+        "Initialized LP token mint: {}",
+        ctx.accounts.lp_token_mint.key()
+    );
     Ok(())
 }

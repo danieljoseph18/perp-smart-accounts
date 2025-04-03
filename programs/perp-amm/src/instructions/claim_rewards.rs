@@ -100,18 +100,18 @@ pub fn claim_rewards(ctx: Context<ClaimRewards>) -> Result<()> {
         );
 
         // Clamp the user's claim if not enough remains in the reward pool
-        let to_claim = pending.min(available);
+        let to_claim = pending.min(available as u128);
         if to_claim == 0 {
             return Ok(());
         }
 
         // Store the amount to claim for later use
-        amount_to_claim = to_claim;
+        amount_to_claim = to_claim as u64;
 
         // 5) Update global and user-level state
         pool_state.total_rewards_claimed = pool_state
             .total_rewards_claimed
-            .checked_add(to_claim)
+            .checked_add(amount_to_claim)
             .ok_or_else(|| error!(VaultError::MathError))?;
 
         new_total_claimed = pool_state.total_rewards_claimed;
