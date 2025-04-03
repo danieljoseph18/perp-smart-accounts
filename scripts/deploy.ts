@@ -258,31 +258,96 @@ async function initializePerpAmm(
   console.log("Pool State SOL Vault:", solVault.toString());
   console.log("Pool State USDC Vault:", usdcVault.toString());
 
-  // Create an LP token mint for the AMM liquidity provider tokens.
+  // Create a keypair for the LP token mint
   const lpTokenMintKeypair = Keypair.generate();
-  await createMint(
-    provider.connection,
-    (provider.wallet as anchor.Wallet).payer,
-    poolState,
-    poolState,
-    9,
-    lpTokenMintKeypair
-  );
-  console.log("LP Token Mint:", lpTokenMintKeypair.publicKey.toString());
+  const lpTokenMint = lpTokenMintKeypair.publicKey;
+  console.log("LP Token Mint:", lpTokenMint.toString());
 
   try {
+    // Initialize Perp AMM program
     await program.methods
       .initialize()
       .accountsStrict({
         admin: provider.wallet.publicKey,
-        authority: marginProgramId,
         poolState,
-        solVault,
-        usdcVault,
-        solMint,
-        usdcMint,
-        usdcRewardVault,
-        lpTokenMint: lpTokenMintKeypair.publicKey,
+        solVault: solVault,
+        usdcVault: usdcVault,
+        solMint: solMint,
+        usdcMint: usdcMint,
+        usdcRewardVault: usdcRewardVault,
+        lpTokenMint,
+        systemProgram: SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([provider.wallet.payer])
+      .rpc();
+
+    console.log(
+      `✓ Pool state initialized successfully! ${poolState.toString()}`
+    );
+
+    // Initialize SOL vault
+    await program.methods
+      .initializeTokenVault(Buffer.from("sol_vault"))
+      .accountsStrict({
+        admin: provider.wallet.publicKey,
+        poolState,
+        vault: solVault,
+        mint: solMint,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([provider.wallet.payer])
+      .rpc();
+
+    console.log(`✓ SOL vault initialized successfully! ${solVault.toString()}`);
+
+    // Initialize USDC vault
+    await program.methods
+      .initializeTokenVault(Buffer.from("usdc_vault"))
+      .accountsStrict({
+        admin: provider.wallet.publicKey,
+        poolState,
+        vault: usdcVault,
+        mint: usdcMint,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([provider.wallet.payer])
+      .rpc();
+
+    console.log(
+      `✓ USDC vault initialized successfully! ${usdcVault.toString()}`
+    );
+
+    // Initialize USDC reward vault
+    await program.methods
+      .initializeTokenVault(Buffer.from("usdc_reward_vault"))
+      .accountsStrict({
+        admin: provider.wallet.publicKey,
+        poolState,
+        vault: usdcRewardVault,
+        mint: usdcMint,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([provider.wallet.payer])
+      .rpc();
+
+    console.log(
+      `✓ USDC reward vault initialized successfully! ${usdcRewardVault.toString()}`
+    );
+
+    // Initialize LP token mint
+    await program.methods
+      .initializeLpMint()
+      .accountsStrict({
+        admin: provider.wallet.publicKey,
+        poolState,
+        lpTokenMint,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY,
@@ -290,13 +355,40 @@ async function initializePerpAmm(
       .signers([provider.wallet.payer, lpTokenMintKeypair])
       .rpc();
 
-    console.log("✓ Perp AMM program initialized successfully!");
+    console.log("✓ LP token mint initialized successfully!");
+
+    // Add authorities to the pool state
+    console.log("Adding authorities to pool state...");
+
+    // Add the perp amm program as an authority for CPI calls
+    await program.methods
+      .addAuthority(program.programId)
+      .accountsStrict({
+        admin: provider.wallet.publicKey,
+        poolState,
+      })
+      .signers([provider.wallet.payer])
+      .rpc();
+
+    console.log("✓ Added perp amm program as authority");
+
+    // Add the admin as an authority
+    await program.methods
+      .addAuthority(provider.wallet.publicKey)
+      .accountsStrict({
+        admin: provider.wallet.publicKey,
+        poolState,
+      })
+      .signers([provider.wallet.payer])
+      .rpc();
+
+    console.log("✓ Added admin as authority");
 
     return {
       poolState,
       solVault,
       usdcVault,
-      lpTokenMint: lpTokenMintKeypair.publicKey,
+      lpTokenMint,
     };
   } catch (error) {
     console.error("Failed to initialize Perp AMM:", error);
