@@ -3,7 +3,7 @@ import { Program } from "@coral-xyz/anchor";
 import { PerpMarginAccounts } from "../../target/types/perp_margin_accounts";
 import { PerpAmm } from "../../target/types/perp_amm";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID, getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 import BN from "bn.js";
 import * as dotenv from "dotenv";
 
@@ -85,26 +85,39 @@ async function main() {
   );
 
   // Determine which vault to use based on which token has a pending withdrawal
-  let poolVaultAccount;
+  let poolVaultAccount: PublicKey;
   if (marginAccountData.pendingSolWithdrawal.gt(new BN(0))) {
     poolVaultAccount = solVault;
-  } else {
+  } else if (marginAccountData.pendingUsdcWithdrawal.gt(new BN(0))) {
     poolVaultAccount = usdcVault;
+  } else {
+    console.error("No pending withdrawals found for this account");
+    process.exit(1);
   }
 
   try {
-    // Get the user token accounts
-    const userSolAccount = await anchor.utils.token.associatedAddress({
-      mint: new PublicKey("So11111111111111111111111111111111111111112"),
-      owner: ownerPublicKey,
-    });
-
-    // Get USDC mint from margin vault
+    // Get the user token accounts using getOrCreateAssociatedTokenAccount
+    const solMint = new PublicKey("So11111111111111111111111111111111111111112");
     const usdcMint = poolStateData.usdcMint;
-    const userUsdcAccount = await anchor.utils.token.associatedAddress({
-      mint: usdcMint,
-      owner: ownerPublicKey,
-    });
+    
+    // Get or create associated token accounts for the user
+    const userSolAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        provider.wallet.payer, // Payer for the transaction
+        solMint,
+        ownerPublicKey
+      )
+    ).address;
+    
+    const userUsdcAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        provider.wallet.payer, // Payer for the transaction
+        usdcMint,
+        ownerPublicKey
+      )
+    ).address;
 
     console.log(
       `Executing withdrawal for account: ${marginAccount.toString()}`
@@ -115,6 +128,27 @@ async function main() {
     console.log(`SOL fees: ${solFeesOwed.toString()}`);
     console.log(`USDC fees: ${usdcFeesOwed.toString()}`);
 
+    // Get token mint for the currency being withdrawn
+    // We'll use this to create the authority's token account
+    let tokenMint: PublicKey;
+    if (marginAccountData.pendingSolWithdrawal.gt(new BN(0))) {
+      tokenMint = solMint;
+    } else {
+      tokenMint = usdcMint;
+    }
+    
+    // Get or create the authority's token account for the token being withdrawn
+    const authorityTokenAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        provider.wallet.payer,
+        tokenMint,
+        provider.wallet.publicKey
+      )
+    ).address;
+    
+    console.log(`Authority token account: ${authorityTokenAccount.toString()}`);
+    
     // Call the execute withdrawal instruction
     const tx = await marginProgram.methods
       .executeWithdrawal(
@@ -131,6 +165,7 @@ async function main() {
         marginUsdcVault: marginUsdcVault,
         userSolAccount: userSolAccount,
         userUsdcAccount: userUsdcAccount,
+        authorityTokenAccount: authorityTokenAccount,
         poolState: poolState,
         poolVaultAccount: poolVaultAccount,
         chainlinkProgram: CHAINLINK_PROGRAM_ID,

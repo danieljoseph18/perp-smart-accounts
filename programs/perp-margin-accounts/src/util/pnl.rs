@@ -137,16 +137,39 @@ fn process_negative_pnl(
         let deduct_sol = std::cmp::min(pnl_sol_native, margin_account.sol_balance);
 
         if deduct_sol > 0 {
+            // Update margin account balance
             margin_account.sol_balance = margin_account
                 .sol_balance
                 .checked_sub(deduct_sol)
                 .ok_or(MarginError::ArithmeticOverflow)?;
 
+            // First, transfer tokens from margin_sol_vault to authority_token_account
+            let seeds = &[b"margin_vault".as_ref(), &[ctx.accounts.margin_vault.bump]];
+            let signer_seeds = &[&seeds[..]];
+            
+            let transfer_accounts = anchor_spl::token::Transfer {
+                from: ctx.accounts.margin_sol_vault.to_account_info(),
+                to: ctx.accounts.authority_token_account.to_account_info(),
+                authority: ctx.accounts.margin_vault.to_account_info(),
+            };
+            
+            let transfer_ctx = CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                transfer_accounts,
+                signer_seeds,
+            );
+            
+            // Transfer the tokens to the authority's account first
+            anchor_spl::token::transfer(transfer_ctx, deduct_sol)?;
+            
+            // Now have the authority make the direct deposit
             let cpi_program = ctx.accounts.liquidity_pool_program.to_account_info();
             let cpi_accounts = perp_amm::cpi::accounts::DirectDeposit {
-                depositor: ctx.accounts.margin_vault.to_account_info(),
+                // Use the authority as the depositor (who is a real signer)
+                depositor: ctx.accounts.authority.to_account_info(),
                 pool_state: ctx.accounts.pool_state.to_account_info(),
-                depositor_token_account: ctx.accounts.margin_sol_vault.to_account_info(),
+                // Use the authority's token account as the source
+                depositor_token_account: ctx.accounts.authority_token_account.to_account_info(),
                 vault_account: ctx.accounts.pool_vault_account.to_account_info(),
                 chainlink_program: ctx.accounts.chainlink_program.to_account_info(),
                 chainlink_feed: ctx.accounts.chainlink_feed.to_account_info(),
@@ -154,10 +177,8 @@ fn process_negative_pnl(
                 system_program: ctx.accounts.system_program.to_account_info(),
             };
             
-            // Sign with the margin vault PDA
-            let seeds = &[b"margin_vault".as_ref(), &[ctx.accounts.margin_vault.bump]];
-            let signer_seeds = &[&seeds[..]];
-            let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_seeds);
+            // No need for PDA signing here - authority is a real signer
+            let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
             direct_deposit(cpi_ctx, deduct_sol)?;
         }
     } else {
@@ -171,16 +192,39 @@ fn process_negative_pnl(
         let deduct_usdc = std::cmp::min(pnl_usdc_native, margin_account.usdc_balance);
 
         if deduct_usdc > 0 {
+            // Update margin account balance
             margin_account.usdc_balance = margin_account
                 .usdc_balance
                 .checked_sub(deduct_usdc)
                 .ok_or(MarginError::ArithmeticOverflow)?;
 
+            // First, transfer tokens from margin_usdc_vault to authority_token_account
+            let seeds = &[b"margin_vault".as_ref(), &[ctx.accounts.margin_vault.bump]];
+            let signer_seeds = &[&seeds[..]];
+            
+            let transfer_accounts = anchor_spl::token::Transfer {
+                from: ctx.accounts.margin_usdc_vault.to_account_info(),
+                to: ctx.accounts.authority_token_account.to_account_info(),
+                authority: ctx.accounts.margin_vault.to_account_info(),
+            };
+            
+            let transfer_ctx = CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                transfer_accounts,
+                signer_seeds,
+            );
+            
+            // Transfer the tokens to the authority's account first
+            anchor_spl::token::transfer(transfer_ctx, deduct_usdc)?;
+            
+            // Now have the authority make the direct deposit
             let cpi_program = ctx.accounts.liquidity_pool_program.to_account_info();
             let cpi_accounts = perp_amm::cpi::accounts::DirectDeposit {
-                depositor: ctx.accounts.margin_vault.to_account_info(),
+                // Use the authority as the depositor (who is a real signer)
+                depositor: ctx.accounts.authority.to_account_info(),
                 pool_state: ctx.accounts.pool_state.to_account_info(),
-                depositor_token_account: ctx.accounts.margin_usdc_vault.to_account_info(),
+                // Use the authority's token account as the source
+                depositor_token_account: ctx.accounts.authority_token_account.to_account_info(),
                 vault_account: ctx.accounts.pool_vault_account.to_account_info(),
                 chainlink_program: ctx.accounts.chainlink_program.to_account_info(),
                 chainlink_feed: ctx.accounts.chainlink_feed.to_account_info(),
@@ -188,10 +232,8 @@ fn process_negative_pnl(
                 system_program: ctx.accounts.system_program.to_account_info(),
             };
             
-            // Sign with the margin vault PDA
-            let seeds = &[b"margin_vault".as_ref(), &[ctx.accounts.margin_vault.bump]];
-            let signer_seeds = &[&seeds[..]];
-            let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_seeds);
+            // No need for PDA signing here - authority is a real signer
+            let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
             direct_deposit(cpi_ctx, deduct_usdc)?;
         }
     }

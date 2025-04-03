@@ -830,6 +830,16 @@ describe("perp-margin-accounts", () => {
       );
 
       try {
+        // Get or create admin SOL token account for withdrawal processing
+        const adminSolAccount = (
+          await getOrCreateAssociatedTokenAccount(
+            provider.connection,
+            admin,
+            solMint,
+            admin.publicKey
+          )
+        ).address;
+
         // Execute withdrawal with mocked programs
         await marginProgram.methods
           .executeWithdrawal(
@@ -846,8 +856,9 @@ describe("perp-margin-accounts", () => {
             marginUsdcVault: marginUsdcVault,
             userSolAccount: user1SolAccount,
             userUsdcAccount: user1UsdcAccount,
+            authorityTokenAccount: adminSolAccount,
             poolState: poolState,
-            poolVaultAccount: solVault, // TODO: wrong I think
+            poolVaultAccount: solVault,
             chainlinkProgram: chainlinkProgram,
             chainlinkFeed: chainlinkFeed,
             authority: admin.publicKey,
@@ -963,6 +974,16 @@ describe("perp-margin-accounts", () => {
       const initialUsdcFees = initialMarginVault.usdcFeesAccumulated;
 
       try {
+        // Get or create admin SOL token account for withdrawal processing
+        const adminSolAccount = (
+          await getOrCreateAssociatedTokenAccount(
+            provider.connection,
+            admin,
+            solMint,
+            admin.publicKey
+          )
+        ).address;
+
         // Try to execute withdrawal with PnL update and fees
         await marginProgram.methods
           .executeWithdrawal(
@@ -979,6 +1000,7 @@ describe("perp-margin-accounts", () => {
             marginUsdcVault: marginUsdcVault,
             userSolAccount: user2SolAccount,
             userUsdcAccount: user2UsdcAccount,
+            authorityTokenAccount: adminSolAccount,
             poolState: poolState,
             poolVaultAccount: solVault,
             chainlinkProgram: chainlinkProgram,
@@ -1130,6 +1152,7 @@ describe("perp-margin-accounts", () => {
             marginUsdcVault: marginUsdcVault,
             userSolAccount: user1SolAccount,
             userUsdcAccount: user1UsdcAccount,
+            authorityTokenAccount: adminSolAccount,
             poolState: poolState,
             poolVaultAccount: solVault,
             chainlinkProgram: chainlinkProgram,
@@ -1257,6 +1280,7 @@ describe("perp-margin-accounts", () => {
             marginUsdcVault: marginUsdcVault,
             userSolAccount: user1SolAccount,
             userUsdcAccount: user1UsdcAccount,
+            authorityTokenAccount: adminSolAccount,
             poolState: poolState,
             poolVaultAccount: solVault,
             chainlinkProgram: chainlinkProgram,
@@ -1416,6 +1440,16 @@ describe("perp-margin-accounts", () => {
       //   pnl_update: pnlProfit (a positive value in USD),
       //   locked funds: 0,
       //   fees: 0.
+      // Get or create admin SOL token account for withdrawal processing
+      const adminSolAccount = (
+        await getOrCreateAssociatedTokenAccount(
+          provider.connection,
+          admin,
+          solMint,
+          admin.publicKey
+        )
+      ).address;
+
       await marginProgram.methods
         .executeWithdrawal(
           pnlProfit, // positive pnl update in USD
@@ -1431,6 +1465,7 @@ describe("perp-margin-accounts", () => {
           marginUsdcVault: marginUsdcVault,
           userSolAccount: user1SolAccount,
           userUsdcAccount: user1UsdcAccount,
+          authorityTokenAccount: adminSolAccount,
           poolState: poolState,
           poolVaultAccount: solVault, // using the SOL vault for SOL withdrawal
           chainlinkProgram: chainlinkProgram,
@@ -1588,6 +1623,16 @@ describe("perp-margin-accounts", () => {
       //   pnl_update: pnlLoss (a negative value in USD),
       //   locked funds: 0,
       //   fees: 0.
+      // Get or create admin SOL token account for withdrawal processing
+      const adminSolAccount = (
+        await getOrCreateAssociatedTokenAccount(
+          provider.connection,
+          admin,
+          solMint,
+          admin.publicKey
+        )
+      ).address;
+
       await marginProgram.methods
         .executeWithdrawal(
           pnlLoss, // negative pnl update in USD
@@ -1603,6 +1648,7 @@ describe("perp-margin-accounts", () => {
           marginUsdcVault: marginUsdcVault,
           userSolAccount: user1SolAccount,
           userUsdcAccount: user1UsdcAccount,
+          authorityTokenAccount: adminSolAccount,
           poolState: poolState,
           poolVaultAccount: solVault, // using the SOL vault for SOL withdrawal
           chainlinkProgram: chainlinkProgram,

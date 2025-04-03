@@ -48,6 +48,13 @@ pub struct ExecuteWithdrawal<'info> {
     )]
     pub user_usdc_account: Account<'info, TokenAccount>,
 
+    /// The authority's token account for handling negative PnL settlements
+    #[account(
+        mut,
+        constraint = authority_token_account.owner == authority.key()
+    )]
+    pub authority_token_account: Account<'info, TokenAccount>,
+
     /// The liquidity pool's state account
     #[account(mut)]
     pub pool_state: Account<'info, PoolState>,
