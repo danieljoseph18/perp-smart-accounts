@@ -144,7 +144,7 @@ fn process_negative_pnl(
 
             let cpi_program = ctx.accounts.liquidity_pool_program.to_account_info();
             let cpi_accounts = perp_amm::cpi::accounts::DirectDeposit {
-                depositor: ctx.accounts.authority.to_account_info(),
+                depositor: ctx.accounts.margin_vault.to_account_info(),
                 pool_state: ctx.accounts.pool_state.to_account_info(),
                 depositor_token_account: ctx.accounts.margin_sol_vault.to_account_info(),
                 vault_account: ctx.accounts.pool_vault_account.to_account_info(),
@@ -153,7 +153,11 @@ fn process_negative_pnl(
                 token_program: ctx.accounts.token_program.to_account_info(),
                 system_program: ctx.accounts.system_program.to_account_info(),
             };
-            let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+            
+            // Sign with the margin vault PDA
+            let seeds = &[b"margin_vault".as_ref(), &[ctx.accounts.margin_vault.bump]];
+            let signer_seeds = &[&seeds[..]];
+            let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_seeds);
             direct_deposit(cpi_ctx, deduct_sol)?;
         }
     } else {
@@ -174,7 +178,7 @@ fn process_negative_pnl(
 
             let cpi_program = ctx.accounts.liquidity_pool_program.to_account_info();
             let cpi_accounts = perp_amm::cpi::accounts::DirectDeposit {
-                depositor: ctx.accounts.authority.to_account_info(),
+                depositor: ctx.accounts.margin_vault.to_account_info(),
                 pool_state: ctx.accounts.pool_state.to_account_info(),
                 depositor_token_account: ctx.accounts.margin_usdc_vault.to_account_info(),
                 vault_account: ctx.accounts.pool_vault_account.to_account_info(),
@@ -183,7 +187,11 @@ fn process_negative_pnl(
                 token_program: ctx.accounts.token_program.to_account_info(),
                 system_program: ctx.accounts.system_program.to_account_info(),
             };
-            let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+            
+            // Sign with the margin vault PDA
+            let seeds = &[b"margin_vault".as_ref(), &[ctx.accounts.margin_vault.bump]];
+            let signer_seeds = &[&seeds[..]];
+            let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_seeds);
             direct_deposit(cpi_ctx, deduct_usdc)?;
         }
     }
