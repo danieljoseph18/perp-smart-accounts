@@ -56,7 +56,10 @@ pub struct LiquidateMarginAccount<'info> {
 
 // No safety checks, so constrain caller.
 pub fn liquidate_margin_account(ctx: Context<LiquidateMarginAccount>) -> Result<()> {
+    // Cancel any pending withdrawals first
     let margin_account = &mut ctx.accounts.margin_account;
+    margin_account.pending_sol_withdrawal = 0;
+    margin_account.pending_usdc_withdrawal = 0;
 
     // Get current balance
     let current_balance = if ctx.accounts.margin_vault_token_account.key()

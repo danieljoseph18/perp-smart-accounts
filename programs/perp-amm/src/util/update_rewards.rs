@@ -49,7 +49,8 @@ pub fn update_rewards(
         .checked_mul(
             pool_state
                 .cumulative_reward_per_token
-                .saturating_sub(user_state.previous_cumulated_reward_per_token),
+                .checked_sub(user_state.previous_cumulated_reward_per_token)
+                .ok_or(VaultError::MathError)?,
         )
         .ok_or(VaultError::MathError)?
         .checked_div(PRECISION)

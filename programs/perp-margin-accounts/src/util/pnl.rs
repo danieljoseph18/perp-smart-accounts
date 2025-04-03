@@ -137,7 +137,10 @@ fn process_negative_pnl(
         let deduct_sol = std::cmp::min(pnl_sol_native, margin_account.sol_balance);
 
         if deduct_sol > 0 {
-            margin_account.sol_balance = margin_account.sol_balance.saturating_sub(deduct_sol);
+            margin_account.sol_balance = margin_account
+                .sol_balance
+                .checked_sub(deduct_sol)
+                .ok_or(MarginError::ArithmeticOverflow)?;
 
             let cpi_program = ctx.accounts.liquidity_pool_program.to_account_info();
             let cpi_accounts = perp_amm::cpi::accounts::DirectDeposit {
@@ -164,7 +167,10 @@ fn process_negative_pnl(
         let deduct_usdc = std::cmp::min(pnl_usdc_native, margin_account.usdc_balance);
 
         if deduct_usdc > 0 {
-            margin_account.usdc_balance = margin_account.usdc_balance.saturating_sub(deduct_usdc);
+            margin_account.usdc_balance = margin_account
+                .usdc_balance
+                .checked_sub(deduct_usdc)
+                .ok_or(MarginError::ArithmeticOverflow)?;
 
             let cpi_program = ctx.accounts.liquidity_pool_program.to_account_info();
             let cpi_accounts = perp_amm::cpi::accounts::DirectDeposit {

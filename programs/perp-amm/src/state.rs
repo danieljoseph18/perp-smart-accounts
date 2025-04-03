@@ -140,11 +140,11 @@ pub fn get_sol_usd_value(sol_amount: u64, sol_usd_price: i128) -> Result<u64> {
     // 3. Divide by 10 (9 - 8 = 1) to convert from 9 to 8 decimals
     let usd = (sol_amount as u128)
         .checked_mul(sol_usd_price as u128)
-        .unwrap_or(0)
+        .ok_or(crate::errors::VaultError::MathError)?
         .checked_div(100_000_000) // Remove Chainlink's 8 decimals
-        .unwrap_or(0)
+        .ok_or(crate::errors::VaultError::MathError)?
         .checked_div(10) // Convert from 9 to 8 decimals
-        .unwrap_or(0);
+        .ok_or(crate::errors::VaultError::MathError)?;
 
     Ok(usd as u64)
 }
@@ -159,11 +159,11 @@ pub fn get_sol_usd_value(sol_amount: u64, sol_usd_price: i128) -> Result<u64> {
 pub fn get_sol_amount_from_usd(usd_value: u64, sol_usd_price: i128) -> Result<u64> {
     let sol = (usd_value as u128)
         .checked_mul(100_000_000) // Add Chainlink's 8 decimals
-        .unwrap_or(0)
+        .ok_or(crate::errors::VaultError::MathError)?
         .checked_mul(10) // Convert from 8 to 9 decimals
-        .unwrap_or(0)
+        .ok_or(crate::errors::VaultError::MathError)?
         .checked_div(sol_usd_price as u128)
-        .unwrap_or(0);
+        .ok_or(crate::errors::VaultError::MathError)?;
 
     Ok(sol as u64)
 }
