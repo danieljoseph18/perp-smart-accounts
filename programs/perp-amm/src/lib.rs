@@ -8,7 +8,7 @@ pub mod state;
 pub mod util;
 
 // Single program ID for this entire program
-declare_id!("5Ppb1xyrzVQBidWAd4oSY9CjFB2q7KVTN5nZkFrsFPEn");
+declare_id!("BJHMHZR6evc2HzgiBoM2ENUYwYxaCuxzWd4ztMCGWcwp");
 
 pub const NATIVE_MINT: &str = "So11111111111111111111111111111111111111112";
 
@@ -37,12 +37,12 @@ pub mod perp_amm {
     pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
         instructions::initialize::initialize(ctx)
     }
-    
+
     /// Initialize a token vault (sol_vault, usdc_vault, or usdc_reward_vault)
     pub fn initialize_token_vault(ctx: Context<InitializeTokenVault>, seed: Vec<u8>) -> Result<()> {
         instructions::initialize::initialize_token_vault(ctx, &seed)
     }
-    
+
     /// Initialize the LP token mint
     pub fn initialize_lp_mint(ctx: Context<InitializeLpMint>) -> Result<()> {
         instructions::initialize::initialize_lp_mint(ctx)

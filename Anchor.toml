@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-perp_amm = "5Ppb1xyrzVQBidWAd4oSY9CjFB2q7KVTN5nZkFrsFPEn"
+perp_amm = "BJHMHZR6evc2HzgiBoM2ENUYwYxaCuxzWd4ztMCGWcwp"
 perp_margin_accounts = "BLywAsuyCkiC2gja3bRf8x3xxC2RPf4DDGwNauT8idZ5"
 
 [registry]
