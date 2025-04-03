@@ -203,38 +203,6 @@ describe("perp-margin-accounts", () => {
 
     console.log("User token accounts created");
 
-    // Initialize user1 margin account
-    await marginProgram.methods
-      .depositMargin(new BN(0))
-      .accountsStrict({
-        marginAccount: user1MarginAccount,
-        marginVault: marginVault,
-        vaultTokenAccount: marginSolVault,
-        userTokenAccount: user1SolAccount,
-        owner: user1.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([user1])
-      .rpc();
-
-    console.log("User1 margin account initialized");
-
-    // Initialize user2 margin account
-    await marginProgram.methods
-      .depositMargin(new BN(0))
-      .accountsStrict({
-        marginAccount: user2MarginAccount,
-        marginVault: marginVault,
-        vaultTokenAccount: marginUsdcVault,
-        userTokenAccount: user2UsdcAccount,
-        owner: user2.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([user2])
-      .rpc();
-
     console.log("User2 margin account initialized");
 
     configInitialized = true;

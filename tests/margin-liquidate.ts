@@ -214,19 +214,6 @@ describe("perp-margin-accounts", () => {
     configInitialized = true;
   });
 
-  // Helper: airdrop SOL if needed
-  async function ensureMinimumBalance(address: PublicKey, minBalance: number) {
-    const balance = await provider.connection.getBalance(address);
-    if (balance < minBalance) {
-      console.log(`Airdropping SOL to ${address.toString()}...`);
-      const airdropTx = await provider.connection.requestAirdrop(
-        address,
-        minBalance - balance
-      );
-      await provider.connection.confirmTransaction(airdropTx);
-    }
-  }
-
   describe("liquidate_margin_account", () => {
     it("should liquidate a margin account's SOL balance", async () => {
       // Wrap SOL first to get WSOL tokens
