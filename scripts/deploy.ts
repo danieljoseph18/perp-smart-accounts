@@ -6,7 +6,6 @@ import { PerpMarginAccounts } from "../target/types/perp_margin_accounts";
 import { PublicKey, Keypair, SystemProgram } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
-  createMint,
   getOrCreateAssociatedTokenAccount,
 } from "@solana/spl-token";
 import * as dotenv from "dotenv";
@@ -28,24 +27,14 @@ const WITHDRAWAL_TIMELOCK = 1; // seconds
 // -------------------------
 // Helper: Get or create USDC mint
 // -------------------------
-async function getUsdcMint(
-  provider: anchor.AnchorProvider,
-  admin: Keypair
-): Promise<PublicKey> {
-  if (process.env.IS_DEVNET) {
+async function getUsdcMint(): Promise<PublicKey> {
+  const isDevnet = process.env.IS_DEVNET === "true";
+  console.log("IS_DEVNET:", isDevnet);
+  if (isDevnet) {
     // Use a fixed devnet USDC mint if indicated.
     return new PublicKey("7ggkvgP7jijLpQBV5GXcqugTMrc2JqDi9tiCH36SVg7A");
   } else {
-    // Create a new USDC mint on localnet (with 6 decimals).
-    const usdcMint = await createMint(
-      provider.connection,
-      admin,
-      admin.publicKey,
-      null,
-      6
-    );
-    console.log("Created USDC mint:", usdcMint.toString());
-    return usdcMint;
+    return new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
   }
 }
 
@@ -130,6 +119,9 @@ async function initializeMarginProgram(
     marginVault,
     true
   );
+
+  console.log("Margin Program SOL Vault:", solVaultAccount.address.toString());
+
   const usdcVaultAccount = await getOrCreateAssociatedTokenAccount(
     provider.connection,
     admin,
@@ -138,7 +130,6 @@ async function initializeMarginProgram(
     true
   );
 
-  console.log("Margin Program SOL Vault:", solVaultAccount.address.toString());
   console.log(
     "Margin Program USDC Vault:",
     usdcVaultAccount.address.toString()
@@ -402,8 +393,13 @@ async function initializePerpAmm(
 async function main() {
   console.log("Starting deployment process...");
 
-  // Configure the provider and set it as the default.
-  const provider = anchor.AnchorProvider.env();
+  // Configure the provider with explicitly defined connection from .env
+  const connection = new anchor.web3.Connection(
+    process.env.ANCHOR_PROVIDER_URL!,
+    "confirmed"
+  );
+  const wallet = anchor.Wallet.local();
+  const provider = new anchor.AnchorProvider(connection, wallet, {});
   anchor.setProvider(provider);
 
   // Use the provider wallet as the admin signer.
@@ -412,7 +408,7 @@ async function main() {
   // Use the wrapped SOL address (which is fixed).
   const solMint = new PublicKey("So11111111111111111111111111111111111111112");
   // Get or create the USDC mint (create a new one for localnet).
-  const usdcMint = await getUsdcMint(provider, admin);
+  const usdcMint = await getUsdcMint();
 
   // Get the program interfaces from the workspace.
   const marginProgram = anchor.workspace
@@ -421,6 +417,9 @@ async function main() {
 
   console.log("Margin Program ID:", marginProgram.programId.toString());
   console.log("Perp AMM Program ID:", perpAmmProgram.programId.toString());
+  console.log("Using RPC URL:", process.env.ANCHOR_PROVIDER_URL);
+  console.log("Sol Mint:", solMint.toString());
+  console.log("USDC Mint:", usdcMint.toString());
 
   // Initialize the margin program (create the vaults, etc.)
   const marginAccounts = await initializeMarginProgram(

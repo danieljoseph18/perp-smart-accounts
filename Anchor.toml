@@ -7,13 +7,13 @@ skip-lint = false
 
 [programs.localnet]
 perp_amm = "GG2jR83szT5N1jTyVPC2dUC8Yzfg3R77Sn1U7ugDtnoN"
-perp_margin_accounts = "EZKKGMsZbG3fwUa61XFeBYdYqpuLnKMPyZqNo1nyeSU9"
+perp_margin_accounts = "2z7zR7pYghoDAUQ2rVZHxvxJuXV2HeTpzofaGispVxMZ"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "mainnet"
 wallet = "~/.config/solana/id.json"
 
 # The cluster from which I am cloning the accounts

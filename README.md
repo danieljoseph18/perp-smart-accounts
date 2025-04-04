@@ -5,11 +5,38 @@ A Solana program for managing a liquidity pool with staking and rewards function
 ## Program Address
 
 - Perp AMM: `GG2jR83szT5N1jTyVPC2dUC8Yzfg3R77Sn1U7ugDtnoN`
-- Perp Margin Accounts: `EZKKGMsZbG3fwUa61XFeBYdYqpuLnKMPyZqNo1nyeSU9`
+- Perp Margin Accounts: `2z7zR7pYghoDAUQ2rVZHxvxJuXV2HeTpzofaGispVxMZ`
 
 ## Known Issues
 
 - USDC price is assumed to be 1.
+
+## Deployment
+
+### Mainnet Deployment Instructions
+
+To deploy the programs to Solana mainnet:
+
+```bash
+# 1. Set cluster to mainnet in Anchor.toml
+# [provider]
+# cluster = "mainnet"
+
+# 2. Build the programs
+anchor build
+
+# 3. Create buffer accounts for large programs
+solana-keygen new -o buffer-margin-keypair.json --no-bip39-passphrase
+solana-keygen new -o buffer-amm-keypair.json --no-bip39-passphrase
+
+# 4. Upload program binaries to buffers
+solana program write-buffer -v ./target/deploy/perp_margin_accounts.so --buffer buffer-margin-keypair.json
+solana program write-buffer -v ./target/deploy/perp_amm.so --buffer buffer-amm-keypair.json
+
+# 5. Deploy programs from buffers
+solana program deploy ./target/deploy/perp_margin_accounts.so --program-id ./target/deploy/perp_margin_accounts-keypair.json --buffer <MARGIN_BUFFER_ADDRESS>
+solana program deploy ./target/deploy/perp_amm.so --program-id ./target/deploy/perp_amm-keypair.json --buffer <AMM_BUFFER_ADDRESS>
+```
 
 ## Testing
 
