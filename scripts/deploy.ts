@@ -18,9 +18,6 @@ dotenv.config();
 const CHAINLINK_PROGRAM_ID = new PublicKey(
   "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny"
 );
-const CHAINLINK_SOL_FEED = process.env.IS_DEVNET
-  ? new PublicKey("99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR")
-  : new PublicKey("CH31Xns5z3M1cTAbKW34jcxPPciazARpijcHj9rxtemt");
 
 const WITHDRAWAL_TIMELOCK = 1; // seconds
 
@@ -38,6 +35,14 @@ async function getUsdcMint(): Promise<PublicKey> {
   }
 }
 
+const getChainlinkSolFeed = () => {
+  const isDevnet = process.env.IS_DEVNET === "true";
+  if (isDevnet) {
+    return new PublicKey("99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR");
+  } else {
+    return new PublicKey("CH31Xns5z3M1cTAbKW34jcxPPciazARpijcHj9rxtemt");
+  }
+};
 // -------------------------
 // Check if account exists
 // -------------------------
@@ -410,6 +415,8 @@ async function main() {
   // Get or create the USDC mint (create a new one for localnet).
   const usdcMint = await getUsdcMint();
 
+  const chainlinkSolFeed = getChainlinkSolFeed();
+
   // Get the program interfaces from the workspace.
   const marginProgram = anchor.workspace
     .PerpMarginAccounts as Program<PerpMarginAccounts>;
@@ -428,7 +435,7 @@ async function main() {
     solMint,
     usdcMint,
     CHAINLINK_PROGRAM_ID,
-    CHAINLINK_SOL_FEED,
+    chainlinkSolFeed,
     admin
   );
   // Initialize the Perp AMM program (create pool state, vaults, and LP token mint)

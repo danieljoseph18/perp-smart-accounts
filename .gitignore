@@ -8,3 +8,5 @@ test-ledger
 .env
 perp-amm-keypair.json
 perp-margin-keypair.json
+buffer-amm-keypair.json
+buffer-margin-keypair.json

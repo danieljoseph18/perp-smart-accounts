@@ -4,8 +4,8 @@ A Solana program for managing a liquidity pool with staking and rewards function
 
 ## Program Address
 
-- Perp AMM: `GG2jR83szT5N1jTyVPC2dUC8Yzfg3R77Sn1U7ugDtnoN`
-- Perp Margin Accounts: `2z7zR7pYghoDAUQ2rVZHxvxJuXV2HeTpzofaGispVxMZ`
+- Perp AMM: `55CV34QX5ZtPpQ5CJQBeCjHwWgAVQrdiHJXuPmsvdV5v`
+- Perp Margin Accounts: `74uHucnSnpqhv3NRpgxxRsQFhaYmw7iuU8jZFzZGBTgx`
 
 ## Known Issues
 
@@ -85,7 +85,7 @@ const provider = new anchor.AnchorProvider(
 // Initialize program
 const program = new Program<PerpAmm>(
   IDL,
-  "GG2jR83szT5N1jTyVPC2dUC8Yzfg3R77Sn1U7ugDtnoN",
+  "55CV34QX5ZtPpQ5CJQBeCjHwWgAVQrdiHJXuPmsvdV5v",
   provider
 );
 ```

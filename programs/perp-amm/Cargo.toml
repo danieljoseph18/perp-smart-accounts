@@ -12,7 +12,7 @@ crate-type = ["cdylib", "lib"]
 name = "perp_amm"
 
 [features]
-default = ["devnet"]
+default = ["mainnet"]
 devnet = []
 mainnet = []
 cpi = ["no-entrypoint"]
